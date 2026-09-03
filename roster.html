@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Members &middot; Frisbeing UF</title>
+<meta name="description" content="Manage the Frisbeing UF club roster.">
+<meta name="theme-color" content="#0E2018">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="assets/monogram.png">
+<link rel="apple-touch-icon" href="assets/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Space+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap">
+<link rel="stylesheet" href="assets/brand.css">
+</head>
+<body>
+
+<div class="wrap">
+
+  <nav class="nav">
+    <a class="mark" href="index.html">
+      <img src="assets/monogram.png" alt="">
+      <span>Frisbeing UF</span>
+    </a>
+    <a class="lnk" href="index.html">The club</a>
+    <a class="lnk" href="sort.html">Sorter</a>
+    <a class="lnk" href="roster.html" aria-current="page">Members</a>
+    <a class="lnk" href="admin.html">Leaders</a>
+  </nav>
+
+  <section class="band-field">
+    <div class="inner">
+      <div class="head">
+        <p class="eyebrow dim">Members</p>
+        <h2 class="display">The squad</h2>
+        <div class="slashes"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <p class="admin-only">Upload the club's PDF name list to update the squad, then <strong>publish</strong> so everyone sees it. Edits here stay on this device until you do.</p>
+        <p class="public-only">Everyone who plays for Frisbeing UF. Skill levels and editing are for club leaders &mdash; <a href="admin.html">sign in</a> if that is you.</p>
+      </div>
+
+      <div class="panel admin-only">
+        <div class="panel-hd">
+          <h3>Update the squad from a PDF</h3>
+          <span class="count">Recommended</span>
+        </div>
+        <p class="hint">Export your name list from Google Docs as a PDF and drop it here. Lines should read <code>Name_Gender_Tier</code> &mdash; e.g. <code>Harry Xu_boy_T1</code>. Tiers are T1 (strongest), T2, T3. Numbering like <code>1.</code> is stripped automatically. This replaces the whole roster.</p>
+        <div class="row" style="margin-top:0">
+          <label class="btn solid" for="pdfFile" style="margin:0"><span>Choose PDF</span></label>
+          <input type="file" id="pdfFile" accept="application/pdf,.pdf" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
+          <span class="count" id="pdfName"></span>
+        </div>
+        <div class="report" id="pdfReport"></div>
+      </div>
+
+      <div class="panel admin-only">
+        <div class="panel-hd">
+          <h3>Or paste the whole roster</h3>
+          <span class="count" id="rosterCount">0 members</span>
+        </div>
+        <p class="hint">One member per line as <code>Name_Gender_Tier</code>, e.g. <code>Harry Xu_boy_T1</code> or <code>Cindy Lin_girl_T2</code> (gender and tier in any order). Tiers: T1 (strongest), T2, T3. Saving replaces the whole roster.</p>
+        <textarea id="rosterInput" rows="10" spellcheck="false"
+          placeholder="Harry Xu_boy_T1&#10;Cindy Lin_girl_T2&#10;Leo Zeng_boy_T3"></textarea>
+        <div class="row">
+          <button class="btn solid" id="saveRoster" type="button"><span>Save roster</span></button>
+          <button class="btn" id="loadCurrent" type="button"><span>Load current</span></button>
+          <button class="btn" id="loadDemo" type="button"><span>Use demo squad</span></button>
+        </div>
+        <div class="report" id="rosterReport"></div>
+      </div>
+
+      <div class="panel admin-only">
+        <div class="panel-hd"><h3>Add one member</h3></div>
+        <div class="row" style="margin-top:0">
+          <input type="text" id="oneName" placeholder="Name" style="flex:1 1 200px;width:auto">
+          <div class="modes" id="oneGender" role="group" aria-label="Gender (optional)"></div>
+          <div class="modes" id="oneTier" role="group" aria-label="Level"></div>
+          <button class="btn solid" id="addOne" type="button"><span>Add</span></button>
+        </div>
+        <div class="report" id="addReport"></div>
+      </div>
+
+      <div class="panel admin-only">
+        <div class="panel-hd">
+          <h3>Publish to the website</h3>
+          <span class="count">roster.json</span>
+        </div>
+        <p class="hint">Editing here only changes <strong>this device</strong>. To update the squad list everyone sees, download <code>roster.json</code> and replace the file of that name on the website. Import reads one back, for moving the squad to another device.</p>
+        <div class="row" style="margin-top:0">
+          <button class="btn solid" id="exportJson" type="button"><span>Publish roster</span></button>
+          <label class="btn" for="importJson" style="margin:0"><span>Import roster.json</span></label>
+          <input type="file" id="importJson" accept="application/json,.json" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
+          <button class="btn spacer" id="clearRoster" type="button"><span>Delete everyone</span></button>
+        </div>
+        <div class="report" id="backupReport"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band-pitch">
+    <div class="inner">
+      <div class="head" style="margin-bottom:26px">
+        <p class="eyebrow dim">Current squad</p>
+        <h2 class="display" id="squadHeading">Nobody yet</h2>
+        <div class="slashes"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <p class="admin-only">Tap &#9792; / &#9794; to set gender, and A / I / B for level. Teams are balanced by gender first, then skill.</p>
+        <p class="public-only">Everyone on the Frisbeing UF roster.</p>
+      </div>
+      <div class="report" id="genderNote" hidden></div>
+      <div class="report" id="unpublished" hidden></div>
+      <div class="member-list" id="memberList"></div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="inner">
+      <div style="display:flex;align-items:center;gap:18px">
+        <img src="assets/monogram.png" alt="">
+        <div class="fm">Frisbeing UF<br>Tsinglan School &middot; Est. 2022</div>
+      </div>
+      <div class="fm" style="text-align:right">
+        <a href="index.html">The club</a> &middot; <a href="sort.html">Sorter</a><br>
+        Trainers on. Disc up.
+      </div>
+    </div>
+  </footer>
+
+</div>
+
+<script src="assets/server-config.js"></script>
+<script src="assets/engine.js"></script>
+<script src="assets/store.js"></script>
+<script src="assets/auth-config.js"></script>
+<script src="assets/auth.js"></script>
+<script src="assets/motion.js"></script>
+<script src="assets/pwa.js"></script>
+<script src="assets/roster.js"></script>
+</body>
+</html>

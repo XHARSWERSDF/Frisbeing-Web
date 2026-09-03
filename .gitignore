@@ -1,0 +1,8 @@
+# runtime data written by the API server
+server/data.json
+server/data.json.tmp
+
+# local preview / editor cruft
+.claude/
+_*.html
+.DS_Store
