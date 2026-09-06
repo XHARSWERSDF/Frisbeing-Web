@@ -49,10 +49,13 @@ img { max-width: 100%; display: block; }
 
 #damask {
   position: fixed;
-  inset: -25% 0 -25% 0;
+  inset: -30% 0 -30% 0;
   z-index: 0;
   pointer-events: none;
-  opacity: .34;
+  opacity: .42;
+  /* seamless mirror-tiled damask, taken from the club pattern */
+  background: url("pattern.png") repeat;
+  background-size: 600px auto;
   will-change: transform;
 }
 #damask svg { width: 100%; height: 100%; }
@@ -145,9 +148,9 @@ code {
 
 section { padding: clamp(56px, 8vw, 104px) var(--pad); position: relative; }
 .inner { max-width: var(--maxw); margin: 0 auto; }
-.band-pitch { background: var(--pitch); }
-.band-green { background: var(--green); }
-.band-field { background: var(--field); }
+.band-pitch { background: rgba(17,38,29,.84); }
+.band-green { background: rgba(28,71,52,.93); }
+.band-field { background: rgba(14,32,24,.82); }
 
 .head { margin-bottom: 44px; }
 .head .eyebrow { margin-bottom: 14px; }

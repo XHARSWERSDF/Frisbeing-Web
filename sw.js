@@ -3,7 +3,7 @@
    The sorter has to work on a field with no signal, so the whole app shell is
    cached on install and served cache-first. Bump CACHE to ship an update.
    ========================================================================== */
-const CACHE = "frisbeing-v4";
+const CACHE = "frisbeing-v5";
 
 const SHELL = [
   "./",
@@ -30,6 +30,7 @@ const SHELL = [
   "./assets/photos/action.jpg",
   "./assets/photos/undefeated.jpg",
   "./assets/photos/floodlights.jpg",
+  "./assets/pattern.png",
   "./assets/monogram.png",
   "./assets/icon-192.png",
   "./assets/icon-512.png"
