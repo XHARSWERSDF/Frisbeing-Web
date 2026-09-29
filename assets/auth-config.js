@@ -14,9 +14,9 @@
 window.FBAuthConfig = {
   entra: {
     /* Directory (tenant) ID of the Tsinglan organisation. */
-    tenantId: "",
+    tenantId: "7222912a-435d-423b-b22b-74b909c3bf8b",
     /* Application (client) ID of the app registration. */
-    clientId: "",
+    clientId: "ee2b6b6f-ed89-44dc-b880-f1fc7e1205d2",
     /* Leave blank for real Microsoft. Only set this to point sign-in at a
        local mock while testing - the server still verifies every token. */
     authority: ""
