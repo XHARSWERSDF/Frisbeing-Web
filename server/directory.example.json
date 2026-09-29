@@ -1,0 +1,13 @@
+{
+  "_comment": "COPY this file to directory.json and fill in your real members. directory.json is gitignored on purpose: it holds real school email addresses and names, which must not be committed to a public repo. The server reads directory.json (never this example) on startup. Each key is the member's Tsinglan email in lowercase; 'preferred' is the name they like to be called (leave \"\" to fall back to the full name); 'grade' is free text and only used to tell current members from graduated ones. See server/README.md, 'The member directory'.",
+  "harry.xu_27@tsinglan.org": {
+    "name": "Harry Xu",
+    "preferred": "Maguire",
+    "grade": "G12"
+  },
+  "alisa.yan_28@tsinglan.org": {
+    "name": "Alisa Yan",
+    "preferred": "",
+    "grade": "G11"
+  }
+}

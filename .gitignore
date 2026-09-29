@@ -2,6 +2,10 @@
 server/data.json
 server/data.json.tmp
 
+# the member directory holds real school emails and names - never commit it.
+# server/directory.example.json shows the format and is safe to commit.
+server/directory.json
+
 # local preview / editor cruft
 .claude/
 _*.html

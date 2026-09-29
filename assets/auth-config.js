@@ -1,38 +1,31 @@
 /* ==========================================================================
-   FRISBEING UF - admin access settings
-   This is the only file you need to edit to control who can sort teams and
-   edit the roster. Everything here is public: it ships to every visitor's
-   browser, so never put a real secret in it.
+   FRISBEING UF - sign-in settings
+
+   Sign-in is your Tsinglan Microsoft 365 account (Microsoft Entra). There are
+   no passwords and no passcode: Microsoft proves who you are, and the club
+   server turns your school address into your role (leader, admin or player).
+
+   The two values below come from a one-time app registration in
+   https://entra.microsoft.com - see README.md, "Microsoft sign-in". They are
+   NOT secrets; a single-page app registration is meant to ship in the page,
+   and security comes from the redirect URI and the server's checks, not from
+   hiding them. While they are blank the Account page explains what is missing.
    ========================================================================== */
 window.FBAuthConfig = {
+  entra: {
+    /* Directory (tenant) ID of the Tsinglan organisation. */
+    tenantId: "",
+    /* Application (client) ID of the app registration. */
+    clientId: "",
+    /* Leave blank for real Microsoft. Only set this to point sign-in at a
+       local mock while testing - the server still verifies every token. */
+    authority: ""
+  },
 
-  /* ---- 1. Sign in with a Tsinglan Google account --------------------------
-     Paste the OAuth client ID from Google Cloud here. While this is empty the
-     Google button is hidden and the passcode below is used instead.
-     Setup is in README.md under "Admin access".                            */
-  googleClientId: "",
-
-  /* Only accounts on this domain can ever become admins. */
+  /* Only this domain can sign in. Microsoft also enforces it via the tenant,
+     this is the friendly message and a second check. */
   emailDomain: "tsinglan.org",
 
-  /* ---- 2. Who is an admin ------------------------------------------------
-     Without this list EVERY student with a school address would be an admin.
-     Keep it to the club leaders. Lower case, full addresses.               */
-  adminEmails: [
-    "harry.xu_27@tsinglan.org"
-    /* add the other leaders here, for example:
-       "michael.cheng_27@tsinglan.org",
-       "justin.he_27@tsinglan.org",
-       "kevin.xiao_27@tsinglan.org" */
-  ],
-
-  /* ---- 3. Passcode fallback ----------------------------------------------
-     Lets you run the sorter before Google sign-in is set up, and gets you in
-     at the field if Google is unreachable. Change it from the default, and
-     set it to "" once Google sign-in is working if you want it gone.       */
-  passcode: "UF-601af5-610d0c",
-
-  /* How long a sign-in lasts before it has to be repeated, in days. Long
-     enough that a leader is not logging in on the sideline every week. */
+  /* How long a sign-in lasts on this device before Microsoft is asked again. */
   sessionDays: 30
 };

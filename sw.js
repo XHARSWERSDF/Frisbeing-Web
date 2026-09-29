@@ -3,7 +3,7 @@
    The sorter has to work on a field with no signal, so the whole app shell is
    cached on install and served cache-first. Bump CACHE to ship an update.
    ========================================================================== */
-const CACHE = "frisbeing-v5";
+const CACHE = "frisbeing-v11";
 
 const SHELL = [
   "./",
@@ -13,16 +13,18 @@ const SHELL = [
   "./manifest.json",
   "./roster.json",
   "./assets/brand.css",
+  "./assets/brand.css?v=11",          /* sort.html asks for these by version */
   "./assets/engine.js",
   "./assets/store.js",
   "./assets/server-config.js",
   "./assets/motion.js",
-  "./assets/sort.js",
+  "./assets/sort.js?v=11",
   "./assets/roster.js",
   "./admin.html",
   "./assets/auth-config.js",
   "./assets/auth.js",
   "./assets/admin.js",
+  "./assets/accounts.js",
   "./assets/pwa.js",
   "./assets/photos/squad-selfie.jpg",
   "./assets/photos/bleachers.jpg",
@@ -49,6 +51,41 @@ self.addEventListener("install", (e) => {
           .catch(() => null)
       )))
       .then(() => self.skipWaiting())
+  );
+});
+
+/* Teams are out. The club server sends an EMPTY push (nothing to encrypt),
+   so the message is always the same: come and spin for your team. Browsers
+   require every push to show something, so this always does. */
+self.addEventListener("push", (e) => {
+  e.waitUntil(self.registration.showNotification("Teams are out! 🥏", {
+    body: "Tonight's teams have been drawn. Tap to see which team you're on.",
+    icon: "./assets/icon-192.png",
+    badge: "./assets/icon-192.png",
+    tag: "frisbeing-teams",
+    renotify: true,
+    data: { url: "./sort.html" }
+  }));
+});
+
+/* Tapping it brings an open Frisbeing tab forward, or opens one. The page
+   checks with the server as it comes into view, so it lands on the disc. */
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const target = new URL((e.notification.data && e.notification.data.url) || "./sort.html", self.registration.scope).href;
+  e.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+      const open = list.find((c) => c.url.split("?")[0] === target);
+      if (open) return open.focus();
+      const any = list.find((c) => new URL(c.url).origin === self.location.origin && "navigate" in c);
+      /* navigate() refuses windows this worker does not control, so fall
+         back to a new window rather than doing nothing. */
+      if (any) {
+        return any.navigate(target).then((c) => c && c.focus())
+          .catch(() => self.clients.openWindow(target));
+      }
+      return self.clients.openWindow(target);
+    })
   );
 });
 
@@ -84,9 +121,15 @@ self.addEventListener("fetch", (e) => {
 
   if (url.origin !== self.location.origin) return;
 
+  /* Never touch the API. What it answers depends on who is signed in -
+     tiers go to leaders only - so a cached copy could show one person's
+     view to the next person on the same phone. */
+  if (/\/api(\/|$)/.test(url.pathname)) return;
+
   /* The two config files decide how the whole site behaves - which server to
-     talk to, which passcode to accept. A stale copy silently puts the site in
-     the wrong mode, so these are never served from cache while online. */
+     talk to, which Microsoft app to sign in with. A stale copy silently puts
+     the site in the wrong mode, so these are never served from cache while
+     online. */
   const isConfig = /\/(server-config|auth-config)\.js$/.test(url.pathname);
 
   /* Pages go network-first so a deploy is picked up as soon as there is a

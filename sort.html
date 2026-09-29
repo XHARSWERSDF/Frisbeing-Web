@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Team Sorter &middot; Frisbeing UF</title>
-<meta name="description" content="Sort the Frisbeing UF squad into fair teams for tonight's session.">
+<title>Tonight &middot; Frisbeing UF</title>
+<meta name="description" content="Is there frisbee tonight? Join the game, then see which team you're on.">
 <meta name="theme-color" content="#0E2018">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="assets/monogram.png">
@@ -12,7 +12,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Space+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap">
-<link rel="stylesheet" href="assets/brand.css">
+<!-- ?v= matches CACHE in sw.js. The old sorter's script is still in phones'
+     caches, and it cannot run this page: a URL that cache has never seen is
+     fetched fresh instead. Bump both together when these files change. -->
+<link rel="stylesheet" href="assets/brand.css?v=11">
 </head>
 <body>
 
@@ -26,100 +29,57 @@
     <a class="lnk" href="index.html">The club</a>
     <a class="lnk" href="sort.html" aria-current="page">Sorter</a>
     <a class="lnk" href="roster.html">Members</a>
-    <a class="lnk" href="admin.html">Leaders</a>
+    <a class="lnk" href="admin.html">Account</a>
   </nav>
 
-  <section class="band-field" style="padding-bottom:0">
+  <!-- tonight: what every player sees ------------------------------------ -->
+  <section class="band-field tonight-band">
     <div class="inner">
-      <div class="head admin-only">
-        <p class="eyebrow dim">Team sorter</p>
-        <h2 class="display">Who is here<br>tonight?</h2>
-        <div class="slashes"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-        <p>Paste tonight's sign-up list below. Numbering, ticks, emoji and side notes are stripped out automatically, so you can copy it straight from the group chat.</p>
+      <div class="tonight" id="tonight" aria-live="polite">
+        <p class="tn-small">Checking tonight&hellip;</p>
       </div>
-
-      <div class="head public-only">
-        <p class="eyebrow dim">Team sorter</p>
-        <h2 class="display">Have<br>a throw</h2>
-        <div class="slashes"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-        <p>Teams are drawn by the club leaders before each session. Spin the disc anyway &mdash; then check the group chat for tonight's line-up.</p>
-      </div>
-
-      <div class="panel admin-only">
-        <div class="panel-hd">
-          <h3>Tonight's attendance</h3>
-          <span class="count" id="rosterState">No members yet</span>
-        </div>
-        <p class="hint">One name per line, or separated by commas. Anything that is not a name gets ignored, and anyone the sorter cannot place is listed back to you rather than dropped.</p>
-        <textarea id="attendanceInput" rows="9" spellcheck="false"
-          placeholder="Tonight's training:&#10;1. Harry Xu&#10;2. Michael Cheng &#10;3. Justin He (might be late)&#10;@Cindy Lin&#10;Andy Wu, Sophie Ma"></textarea>
-        <div class="row">
-          <button class="btn solid" id="readAttendance" type="button"><span>Read the list</span></button>
-          <button class="btn" id="allIn" type="button"><span>Everyone is in</span></button>
-          <button class="btn" id="clearAttendance" type="button"><span>Clear</span></button>
-        </div>
-        <div class="report" id="attendanceReport"></div>
-      </div>
-
-      <details class="panel admin-only" id="rosterPanel">
-        <summary style="cursor:pointer;list-style:none">
-          <div class="panel-hd">
-            <h3>Club roster</h3>
-            <span class="count" id="rosterCount">0 members</span>
-          </div>
-        </summary>
-        <p class="hint">One member per line as <code>Name_level</code> &mdash; for example <code>Harry Xu_advance</code>. Levels accepted: advance, intermediate, beginner (also adv / int / beg). Saving replaces the whole roster.</p>
-        <textarea id="rosterInput" rows="9" spellcheck="false"
-          placeholder="Harry Xu_advance&#10;Cindy Lin_intermediate&#10;Bruce Lai_beginner"></textarea>
-        <div class="row">
-          <button class="btn solid" id="saveRoster" type="button"><span>Save roster</span></button>
-          <button class="btn" id="loadCurrent" type="button"><span>Load current</span></button>
-          <button class="btn" id="loadDemo" type="button"><span>Use demo squad</span></button>
-          <a class="btn spacer" href="roster.html"><span>Edit one by one</span></a>
-        </div>
-        <div class="report" id="rosterReport"></div>
-      </details>
     </div>
   </section>
 
-  <section class="band-green">
+  <!-- leaders and admins: the calendar and the draw ----------------------- -->
+  <section class="band-green" id="leaderBand" hidden>
     <div class="inner">
-      <div class="sorter" id="sorter">
-        <p class="eyebrow admin-only" style="margin-bottom:13px">Edition</p>
-        <div class="modes admin-only" id="modes" role="group" aria-label="Sort edition"></div>
-        <p class="mode-blurb admin-only" id="modeBlurb"></p>
+      <div class="head">
+        <p class="eyebrow">For leaders</p>
+        <h2 class="display">Sessions</h2>
+        <div class="slashes"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <p>Every Tuesday and Thursday is on by default. Tap a day to add a session, call one off, or see who&rsquo;s coming. On game day the supreme leader spins the disc to draw the teams, and everyone who joined is notified.</p>
+      </div>
 
-        <div class="sort-label" style="margin-top:22px">Sort teams</div>
-        <button id="disc" aria-label="Sort teams">
-          <span class="disc-inner"><img src="assets/monogram.png" alt=""></span>
-          <span class="disc-ring"></span>
+      <div class="cal-top">
+        <div>
+          <h3 class="cal-month" id="calMonth">&nbsp;</h3>
+          <p class="cal-sub" id="calSub">&nbsp;</p>
+        </div>
+        <div class="cal-nav">
+          <button class="pill round" id="calPrev" type="button" aria-label="Previous month">&lsaquo;</button>
+          <button class="pill" id="calToday" type="button">Today</button>
+          <button class="pill round" id="calNext" type="button" aria-label="Next month">&rsaquo;</button>
+        </div>
+      </div>
+
+      <div class="cal-card">
+        <div class="cal-grid" id="calGrid" aria-label="Session calendar"></div>
+        <div class="cal-legend">
+          <span class="k">KEY</span>
+          <span><i class="dot regular"></i>Tue &amp; Thu</span>
+          <span><i class="dot extra"></i>Extra session</span>
+          <span><i class="dot drawn"></i>Teams drawn</span>
+          <span><i class="dot today"></i>Today</span>
+        </div>
+      </div>
+
+      <div class="day-panel" id="dayPanel" aria-live="polite"></div>
+
+      <div style="text-align:center">
+        <button class="tiers-toggle" id="tiersToggle" type="button" aria-pressed="false">
+          <span class="box" aria-hidden="true"></span><span>Show skill levels</span>
         </button>
-        <div class="progress" id="prog" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-
-        <p class="eyebrow count-label admin-only">Number of teams</p>
-        <div class="steps admin-only" id="steps" role="group" aria-label="Number of teams"></div>
-        <p class="preview admin-only" id="preview"></p>
-        <p class="notice admin-only" id="notice" role="status"></p>
-        <p class="notice public-only" id="publicMsg" role="status" hidden></p>
-
-        <p class="shared-banner" id="sharedBanner" hidden></p>
-        <div id="results" aria-live="polite"></div>
-        <p id="meta"></p>
-
-        <div class="row admin-only" id="resultActions" style="justify-content:center" hidden>
-          <button class="btn" id="reshuffle" type="button"><span>Reshuffle</span></button>
-          <button class="btn" id="copyText" type="button"><span>Copy teams</span></button>
-          <button class="btn solid" id="shareLink" type="button"><span>Share link</span></button>
-        </div>
-        <div class="row admin-only" style="justify-content:center">
-          <input type="text" id="shareFallback" readonly hidden style="flex:1 1 100%;max-width:52ch;font-size:11px">
-        </div>
-
-        <div class="admin-only">
-          <button class="tiers-toggle" id="tiersToggle" type="button" aria-pressed="false">
-            <span class="box" aria-hidden="true"></span><span>Show skill levels</span>
-          </button>
-        </div>
       </div>
     </div>
   </section>
@@ -141,11 +101,10 @@
 
 <script src="assets/server-config.js"></script>
 <script src="assets/engine.js"></script>
-<script src="assets/store.js"></script>
 <script src="assets/auth-config.js"></script>
 <script src="assets/auth.js"></script>
 <script src="assets/motion.js"></script>
 <script src="assets/pwa.js"></script>
-<script src="assets/sort.js"></script>
+<script src="assets/sort.js?v=11"></script>
 </body>
 </html>

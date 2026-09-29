@@ -11,7 +11,7 @@ read the source and understand it.
 | File | What it is |
 |---|---|
 | `index.html` | The club info page, built from the brochure |
-| `sort.html` | The team sorter — attendance in, teams out |
+| `sort.html` | Tonight's game — Join / I'll pass, the session calendar, the draw, and each player's team reveal |
 | `roster.html` | Member management, backup and restore |
 | `admin.html` | Club leader sign-in |
 | `roster.json` | The published squad &mdash; what everyone sees |
@@ -31,10 +31,53 @@ Then open <http://localhost:8931>.
 changes may not show up on reload. In DevTools open *Application &rarr; Service
 Workers* and tick **Update on reload**, or press **Unregister** once.
 
-## The two input boxes
+## Game nights
 
-**Club roster** (on `sort.html` under *Club roster*, or on `roster.html`) —
-one member per line:
+The **Sorter** page (`sort.html`) is tonight's game. It needs server mode and
+Microsoft sign-in (see below).
+
+**What a player sees** — one big message about tonight:
+
+1. No session tonight: *No Current Scheduled Games For Tonight* / *Stay tuned
+   next day!* and three spinning 🥏.
+2. A session tonight: *🔥 TONIGHT 🔥 — We shall have a GAME OF “激情❤️‍🔥”
+   FRISBEE* with **Join** and **I'll pass**. Signed-out visitors get a
+   *Sign in to join* button instead.
+3. After answering: *You're In! Stay tuned for the team selection!* or *It's
+   alr, Cya another day!* They can change their answer until the teams are
+   drawn; after that it is locked.
+4. Once the teams are drawn, everyone who joined gets a **push notification**,
+   and their page becomes a disc — *See Your … TEAM!!!* Tapping it spins the
+   disc and reveals *You are on team* **A** (or B, C…) with their teammates.
+   Players only ever see their own team, by name, never a tier.
+
+**What leaders and admins also get** — a calendar under tonight's message:
+
+- Every **Tuesday and Thursday** is a session by default (white bubbles). Tap
+  any day to **schedule** an extra one (gold bubbles) or **call one off**.
+  Calling off a day deletes its answers and teams. Past days are read-only.
+- For the selected day: who **joined** and who is **passing**, with gender,
+  and T1/T2/T3 when *Show skill levels* is on. Nicknames show next to the
+  squad-list name, and anyone not linked to the squad list plays as
+  unclassified.
+- **Only the supreme leader draws.** Pick the number of teams, spin the disc,
+  and the server sorts everyone who joined — gender first, then tier (see
+  *How the sorting works*) — and notifies them. The disc stays for a
+  **Reshuffle**, and *Take teams back* reopens Join / I'll pass.
+
+Session draws always use **Fair teams**, because every other edition leaves
+someone out — and a player who pressed Join must always have a team to find.
+"Tonight" is China time, decided by the server (`CLUB_TZ`), so a phone with
+the wrong clock cannot show the wrong day.
+
+**Notifications on iPhone** only work once the site is added to the Home
+Screen (Share → *Add to Home Screen*) and opened from there — that is Apple's
+rule for web push. The page tells iPhone users this when they join. Android
+and desktop browsers ask for permission when the player taps Join.
+
+## Club roster format
+
+On `roster.html`, one member per line:
 
 ```
 Harry Xu_advance
@@ -48,29 +91,15 @@ Levels understood: `advance` / `advanced` / `adv` / `a`, `intermediate` /
 Lines that cannot be read are listed back to you with the reason — nothing is
 silently dropped.
 
-**Tonight's attendance** (on `sort.html`) — paste the sign-up list straight
-from the group chat. The parser strips numbering (`1.` `2、`), bullets,
-`@mentions`, ticks and emoji, bracketed asides (`(late)`, `（可能迟到）`),
-trailing `+1`, and notes after a dash. It splits on newlines and commas,
-ignores headers and timestamps, and matches names case- and spacing-
-insensitively, including unique first-name matches.
+## Other editions
 
-Anyone it cannot place is reported, not dropped:
-
-- **Not on the roster** — a typo, or someone who needs adding
-- **Too vague** — "David" when there is a David Chen and a David Chan
-- **Listed twice** — counted once
-
-## The three editions
-
-| Edition | Who is in the draw |
-|---|---|
-| **Fair teams** | Everyone present, balanced across all three levels |
-| **Tournament pool** | Advanced and intermediate only |
-| **Beginner rounds** | Intermediate and beginner, plus exactly one advanced player per team |
-
-Beginner rounds refuses rather than guesses if there are not enough advanced
-players present for the number of teams requested.
+`assets/engine.js` still has the older editions — **Tournament pool** (T1 and
+T2 only), **Elite pool** (the names in `FB.MODES.elite.members`) and
+**Development** (T2 and T3 plus one T1 per team). The game-night page does not
+offer them, since each one leaves some of the people who joined without a
+team. They are kept so they can be brought back, for example as a separate
+tournament page. Its paste-the-attendance parser (`FB.parseAttendance`) is
+kept for the same reason.
 
 ## How the sorting works
 
@@ -90,6 +119,13 @@ are still spread evenly, just not counted as boys or girls.
    where every level stays within one of even. On a clean roster it never
    fires; it exists for when attendance skews the draw.
 
+**Unclassified players** are people on tonight's list who are not on the
+roster. They count as T3 for team strength and sit out wherever T3 sits out
+(Tournament pool), but they are dealt as their own group, after the gender
+passes and before the refinement pass: whole rounds, smallest teams first, so
+every team gets the same number of them give or take one. Refinement never
+moves them, and they are never saved to the roster.
+
 Every team ends up within one player of every other on **each level
 separately**, and within one on total size.
 
@@ -107,21 +143,19 @@ apiBase: ""                                  // file mode  (no server)
 apiBase: "https://your-server/api"           // server mode
 ```
 
-**File mode** is what ships. The squad comes from `roster.json`, leaders edit
-in their own browser, and team draws are shared with a link.
+**File mode** is what ships. The squad comes from `roster.json` and leaders
+edit in their own browser. Game nights are switched off — the Sorter page
+says so — because Join, the draw and notifications all live on the server.
 
 **Server mode** switches the same site over to a shared database:
 
+- Game nights: the calendar, Join / I'll pass, the supreme leader's draw, push
+  notifications and each player's team reveal (see *Game nights*)
 - A leader adds a member &mdash; everyone with the page open sees it within
-  about 10 seconds, without reloading
-- A leader sorts &mdash; the draw appears for everyone, no share link needed
+  about 10 seconds, without reloading. Answers and draws show up the same way
 - Edits work from any device; no more Publish and no more sending files
-- The passcode is checked **on the server**, so a member cannot get past it
-  with developer tools
-
-Nothing else changes: same design, same sorting, same PDF upload. The roster
-also stays cached on each device, so the sorter still works on a field with
-no signal.
+- Sign-in is a real Microsoft login and every roster and tier check runs **on
+  the server**, so a member cannot get past it with developer tools
 
 Setup, endpoints and a working reference server are in
 [`server/README.md`](server/README.md).
@@ -160,80 +194,110 @@ Until step 3, edits live only on that device, and the Members page says so in
 an amber banner. That warning exists because editing and wondering why nobody
 else can see it is the easy mistake to make.
 
-## Sharing tonight's teams
+## Accounts
 
-There is no database, so a draw has nowhere to live on the server. Instead it
-travels inside a link.
+With the club server switched on (see *Server mode*), anyone with a Tsinglan
+school account signs in on the **Account** page with **Microsoft** — the same
+login they use for Outlook and Teams. There is no separate password and no
+passcode: Microsoft proves who they are, and the server decides what each
+account can do, from the address:
 
-After sorting, press **Share link**. That copies a URL with the teams encoded
-into it &mdash; paste it into the group chat, and anyone who opens it sees the
-rosters on the real site: names only, no skill levels, no leader controls. A
-full 39-player draw makes a link of about 700 characters.
+| Role | Who | Can |
+|---|---|---|
+| **Supreme leader** | `harry.xu_27@tsinglan.org` | Everything an admin can, plus remove an admin's account |
+| **Admin** | `kevin.xiao_26`, `justin.he_27`, `michael.cheng_27`, `jason.xu_27` | Sort teams, edit the squad, see skill levels, link and remove player accounts |
+| **Player** | Every other `@tsinglan.org` address | See the squad list and tonight's teams |
 
-If the browser refuses clipboard access, the link appears in a box below the
-button so it can be copied by hand.
+The list is `LEADER_EMAIL` and `ADMIN_EMAILS` at the top of `server/server.js`.
+It is read on every request, so a change applies to existing accounts at once.
 
-Sorting again replaces the link, so old ones keep showing the draw they were
-made from &mdash; which is usually what you want when someone scrolls back.
+**Tiers stay private.** The server takes skill levels out of the roster before
+sending it to anyone who is not a leader or admin. A player's browser never
+receives them — not hidden on screen, simply not there.
 
-## Admin access
+**Matching to the squad list.** A new account is linked to its roster entry by
+the member directory (`server/directory.json`, keyed by email) if the server
+has one, then by the name in the address (`alex.chen_29` → Alex Chen).
+Only an exact match to an entry nobody else has claimed counts. Anyone left
+over is listed first under **Members → Accounts**, where a leader picks their
+name. Someone who signs up before being added to the roster is linked
+automatically once they are. The directory also decides the name a member is
+greeted by — the one they like to be called; see `server/README.md`.
+
+**No impersonation.** Because Microsoft proves ownership of the address, and
+roles come from the address, nobody can claim Harry's account by typing his
+email — they would have to sign in to Harry's actual Microsoft account. That is
+the whole reason for using the school login instead of a passcode.
+
+**Nothing to forget.** There is no password to reset. If someone loses access
+they take it up with the school's Microsoft account help, not the club.
+
+**Before going public:** `roster.json` still ships with tiers in it, and
+anyone can open that file. The server only reads it on its very first run.
+Stripping the tiers from it closes the gap, at the cost of file mode and of
+seeding a brand-new server from it.
+
+## Microsoft sign-in
 
 Members get a read-only site: the club page, the squad list by name, and a
 frisbee they can spin. **Sorting teams, editing the roster, and seeing skill
-levels are for club leaders.** Sign in at `admin.html` (the *Leaders* link).
+levels are for club leaders.** Sign in at `admin.html` (the *Account* link).
 
-Everything is configured in **`assets/auth-config.js`**.
+Sign-in is the school's own **Microsoft 365** login. Nobody types a password
+into this site and there is no passcode to leak: the browser is sent to
+Microsoft, Microsoft sends back a signed proof of who you are, and the **club
+server** — not the page — checks that proof and decides your role. Because the
+check is on the server, a member cannot get past it with developer tools, and
+because it is a real Microsoft login, nobody can claim another person's address.
 
-### Be honest about what this is
+This needs **server mode** (see above). Without the server there is no sign-in
+at all; the Account page says so and the rest of the site still works.
 
-The site is static and the roster lives in each browser's own storage, so this
-check runs on the visitor's machine. Anyone who opens developer tools can
-switch it off. That is fine here because there is nothing shared to protect:
-turning the gate off only lets someone sort teams in their own browser with
-their own copy of the roster. It cannot change anything for anyone else.
+### Register the app in Entra (one time)
 
-What it does buy: members see a clean site, skill levels stay private, and
-nobody edits the roster by wandering in.
+Someone with a Tsinglan admin account — most likely school IT — does this once
+in <https://entra.microsoft.com>. (Students usually cannot register apps
+themselves; there is a note to forward to IT in `IT-request.md`.)
 
-If you ever need access genuinely **enforced**, put
-[Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/)
-in front of `sort.html`, `roster.html` and `admin.html`. It gates on real
-Google Workspace login at the edge, is free up to 50 users, and needs no code.
+1. **Entra ID → App registrations → New registration.**
+2. Name it e.g. *Frisbeing UF*. Under *Supported account types* choose
+   **Accounts in this organizational directory only** (single tenant).
+3. Under *Redirect URI* choose the **Single-page application (SPA)** platform
+   and add the Account page's address, exactly — for example
+   `https://frisbeing.com/admin.html`, and `http://localhost:8000/admin.html`
+   too if you want to test locally. Add one line per address the site is served
+   from.
+4. **Register.** On the Overview page copy the **Application (client) ID** and
+   the **Directory (tenant) ID**.
 
-Sharing the passcode with the other leaders is a perfectly reasonable way to
-run this, and needs no setup at all. The Google option below is optional.
+### Paste the two IDs in
 
-### Set up school Google sign-in
+Both go into **`assets/auth-config.js`**:
 
-1. Go to <https://console.cloud.google.com/apis/credentials>, create a project.
-2. **Create credentials → OAuth client ID → Web application.**
-3. Under *Authorised JavaScript origins* add your site's address, exactly
-   (e.g. `https://frisbeing.netlify.app`). Add `http://localhost:8931` too if
-   you want to test locally.
-4. Copy the client ID into `googleClientId` in `assets/auth-config.js`.
+```js
+entra: {
+  tenantId: "the Directory (tenant) ID",
+  clientId: "the Application (client) ID"
+}
+```
+
+Neither is a secret — a single-page app is meant to ship them in the page, and
+the security comes from the registered redirect URI and the server's checks.
+While they are blank the Account page explains what is missing.
+
+The **server** needs the same two IDs so it can verify the login, as
+`ENTRA_TENANT_ID` and `ENTRA_CLIENT_ID` — see [`server/README.md`](server/README.md).
 
 ### Say who the leaders are
 
-**This is the important bit.** `emailDomain` alone would make every student
-with a school address an admin. `adminEmails` is the list that actually
-decides:
+Roles are decided on the server, not in the page. `LEADER_EMAIL` (the supreme
+leader) and `ADMIN_EMAILS` (the admins) at the top of `server/server.js` are
+the list that matters; every other `@tsinglan.org` address is a player. They
+are read on every request, so editing the list changes existing accounts at
+once.
 
-```js
-adminEmails: [
-  "harry.xu_27@tsinglan.org",
-  "michael.cheng_27@tsinglan.org"
-]
-```
-
-An empty list denies everyone rather than letting everyone in.
-
-### The passcode
-
-`passcode` lets you run the sorter before Google sign-in is set up, and gets
-you in at the field when Google is unreachable. **Change it from the default**,
-and set it to `""` once Google sign-in works if you want it gone.
-
-A sign-in lasts `sessionDays` (30 by default) on that device.
+A sign-in lasts `sessionDays` (30 by default) on that device before Microsoft
+is asked again.
 
 ## Installing it on a phone
 
@@ -254,7 +318,13 @@ Drop this folder on any static host:
 
 Pages are fetched network-first, so a deploy lands on the next visit. CSS, JS
 and images are stale-while-revalidate: instant from cache, refreshed in the
-background for next time. There is no version string to remember to bump.
+background for next time.
+
+**One version number to bump:** `sort.html` loads `brand.css?v=N` and
+`sort.js?v=N`, where N matches `CACHE` in `sw.js`. When either file changes,
+raise N in `sort.html`, in `SHELL` in `sw.js`, and in `CACHE` in `sw.js`, all
+together. Otherwise a phone serves the new page with the old
+script from its cache, and the page breaks until a second reload.
 
 ## Where the roster is stored
 
@@ -277,11 +347,11 @@ assets/
   engine.js            parsers and sorting — no DOM, unit-testable
   store.js             localStorage and the demo squad
   motion.js            damask background, parallax, scroll reveals
-  sort.js              sorter page
+  sort.js              game nights: tonight, calendar, draw, team reveal
   roster.js            members page
-  auth-config.js       who can sort and edit - the file you edit
-  auth.js              the leader gate
-  admin.js             leader sign-in page
+  auth-config.js       Microsoft sign-in IDs - the file you edit
+  auth.js              Microsoft sign-in and the leader gate
+  admin.js             the Account / sign-in page
   monogram.png         extracted from the A3 poster
   icon-*.png           home screen icons
   photos/              club photographs

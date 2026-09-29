@@ -10,10 +10,15 @@
 
   /* Tiers are T1 (strongest), T2, T3 (developing). The codes A/I/B are kept
      internally so nothing downstream had to change; only the display name
-     and the accepted words moved to T1/T2/T3. A=T1, I=T2, B=T3. */
-  FB.TIERS = ["A", "I", "B"];
-  FB.TIER_NAME = { A: "T1", I: "T2", B: "T3" };
-  FB.WEIGHT = { A: 3, I: 2, B: 1 };
+     and the accepted words moved to T1/T2/T3. A=T1, I=T2, B=T3.
+
+     U (unclassified) is not a level anyone on the roster can have. It marks
+     people on tonight's list who are not on the roster at all: they weigh the
+     same as T3 and go wherever T3 goes, but are dealt as their own group so
+     every team gets an even share of the unknowns. */
+  FB.TIERS = ["A", "I", "B", "U"];
+  FB.TIER_NAME = { A: "T1", I: "T2", B: "T3", U: "U" };
+  FB.WEIGHT = { A: 3, I: 2, B: 1, U: 1 };
 
   FB.MODES = {
     fair: {
@@ -28,7 +33,22 @@
       label: "Tournament pool",
       tiers: ["A", "I"],
       anchorA: 0,
-      blurb: "Top two tiers only — T1 and T2. T3 players sit this one out."
+      blurb: "Top two tiers only — T1 and T2. T3 and unclassified players sit this one out."
+    },
+    elite: {
+      key: "elite",
+      label: "Elite pool",
+      tiers: ["A", "I", "B"],
+      anchorA: 0,
+      /* The squad itself. Only people named here are drawn; everyone else sits
+         out. Names must match the roster (case and spacing do not matter), so
+         update this list when someone joins, leaves or is renamed. */
+      members: [
+        "Harry Xu", "Michael Cheng", "Jason Xu", "Jason Luo", "Shopping Deng",
+        "Justin He", "Carina Zheng", "Yan Li", "Eva Song", "Kristy Gai",
+        "Elsa Li", "Ingram Xie", "Kevin Xiao", "Shawn Ai"
+      ],
+      blurb: "The elite squad only, balanced by gender first, then across tiers. Everyone else sits this one out."
     },
     beginner: {
       key: "beginner",
@@ -272,10 +292,12 @@
     return { status: "unmatched" };
   };
 
+  /* Anyone the roster does not know still plays. They come back as
+     unclassified players (tier U) instead of being left out of the draw. */
   FB.parseAttendance = function (text, members) {
     var names = FB.extractNames(text);
     var present = [];
-    var unmatched = [];
+    var unclassified = [];
     var ambiguous = [];
     var duplicates = [];
     var taken = {};
@@ -290,13 +312,15 @@
       } else if (res.status === "ambiguous") {
         ambiguous.push({ input: raw, options: res.options.map(function (m) { return m.name; }) });
       } else {
-        unmatched.push(raw);
+        if (taken[norm(raw)]) { duplicates.push(raw); return; }
+        taken[norm(raw)] = true;
+        unclassified.push({ name: raw, tier: "U", gender: "" });
       }
     });
 
     return {
       present: present,
-      unmatched: unmatched,
+      unclassified: unclassified,
       ambiguous: ambiguous,
       duplicates: duplicates,
       read: names.length
@@ -320,7 +344,8 @@
   FB.score = score;
 
   function counts(team) {
-    var c = { A: 0, I: 0, B: 0, f: 0, m: 0, u: 0 };
+    /* tiers in capitals; lower-case u is "gender not set", not unclassified */
+    var c = { A: 0, I: 0, B: 0, U: 0, f: 0, m: 0, u: 0 };
     team.forEach(function (p) {
       c[p.tier]++;
       var g = p.gender === "f" ? "f" : p.gender === "m" ? "m" : "u";
@@ -352,9 +377,15 @@
     if (!m) return { error: "Unknown edition." };
     if (!(n >= 2)) return { error: "Pick at least two teams." };
 
+    /* A named squad (Elite pool) only draws from the people on its list. */
+    var named = m.members ? m.members.map(norm) : null;
+    var eligible = named
+      ? players.filter(function (p) { return named.indexOf(norm(p.name)) >= 0; })
+      : players;
+
     var anchors = [];
     if (m.anchorA > 0) {
-      var adv = shuffle(players.filter(function (p) { return p.tier === "A"; }));
+      var adv = shuffle(eligible.filter(function (p) { return p.tier === "A"; }));
       var need = m.anchorA * n;
       if (adv.length < need) {
         return {
@@ -366,14 +397,18 @@
       anchors = adv.slice(0, need);
     }
 
-    var pool = players.filter(function (p) { return m.tiers.indexOf(p.tier) >= 0; });
-    var playing = pool.length + anchors.length;
+    var pool = eligible.filter(function (p) { return m.tiers.indexOf(p.tier) >= 0; });
+    /* Unclassified players go wherever T3 goes, so Tournament benches them. */
+    var unclassified = m.tiers.indexOf("B") >= 0
+      ? eligible.filter(function (p) { return p.tier === "U"; })
+      : [];
+    var playing = pool.length + anchors.length + unclassified.length;
     if (playing < n) {
       return { error: "Only " + playing + " player" + (playing === 1 ? "" : "s") +
         " available for this edition, which is not enough for " + n + " teams." };
     }
     return {
-      pool: pool, anchors: anchors, mode: m,
+      pool: pool, anchors: anchors, unclassified: unclassified, mode: m,
       playing: playing,
       benched: players.length - playing
     };
@@ -410,11 +445,23 @@
         tp.forEach(function (p, k) { teams[order[k % n]].push(p); });
       });
     });
+
+    /* Unclassified players last, in whole rounds, smallest teams first. Every
+       team gets the same number of them give or take one, and the odd ones
+       out fill whatever size gap the gender passes left behind. */
+    var smallest = shuffle(teams.map(function (_, k) { return k; }))
+      .sort(function (a, b) {
+        return teams[a].length - teams[b].length || score(teams[a]) - score(teams[b]);
+      });
+    shuffle(built.unclassified.slice()).forEach(function (p, k) {
+      teams[smallest[k % n]].push(p);
+    });
     return teams;
   };
 
   /* Safety net: swap between strongest and weakest, but only where every tier
-     stays within one of level. Anchors are never moved. */
+     stays within one of level. Anchors and unclassified players are never
+     moved. */
   FB.refine = function (teams, built, n) {
     var lo = {}, hi = {}, tiers = built.mode.tiers;
     tiers.forEach(function (t) {
@@ -643,7 +690,7 @@
     return teams.map(function (team, i) {
       var head = "Team " + String.fromCharCode(65 + i) + " (" + team.length + ")";
       var body = team.slice().sort(function (a, b) {
-        return FB.WEIGHT[b.tier] - FB.WEIGHT[a.tier] || a.name.localeCompare(b.name);
+        return FB.TIERS.indexOf(a.tier) - FB.TIERS.indexOf(b.tier) || a.name.localeCompare(b.name);
       }).map(function (p) {
         return "- " + p.name + (opts.tiers ? " [" + p.tier + "]" : "");
       }).join("\n");

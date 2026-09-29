@@ -26,7 +26,7 @@
     <a class="lnk" href="index.html">The club</a>
     <a class="lnk" href="sort.html">Sorter</a>
     <a class="lnk" href="roster.html" aria-current="page">Members</a>
-    <a class="lnk" href="admin.html">Leaders</a>
+    <a class="lnk" href="admin.html">Account</a>
   </nav>
 
   <section class="band-field">
@@ -36,7 +36,7 @@
         <h2 class="display">The squad</h2>
         <div class="slashes"><i></i><i></i><i></i><i></i><i></i><i></i></div>
         <p class="admin-only">Upload the club's PDF name list to update the squad, then <strong>publish</strong> so everyone sees it. Edits here stay on this device until you do.</p>
-        <p class="public-only">Everyone who plays for Frisbeing UF. Skill levels and editing are for club leaders &mdash; <a href="admin.html">sign in</a> if that is you.</p>
+        <p class="public-only">Everyone who plays for Frisbeing UF. Skill levels and editing are for club leaders. <a href="admin.html">Sign in or make an account</a> with your school email.</p>
       </div>
 
       <div class="panel admin-only">
@@ -94,6 +94,16 @@
         </div>
         <div class="report" id="backupReport"></div>
       </div>
+
+      <div class="panel" id="accountsPanel" hidden>
+        <div class="panel-hd">
+          <h3>Accounts</h3>
+          <span class="count" id="accountsCount"></span>
+        </div>
+        <p class="hint">Everyone who has signed up with a school email. New accounts are linked to their name on the squad list automatically; pick a name for anyone who could not be matched. Players never see their skill level.</p>
+        <div class="member-list" id="accountList"></div>
+        <div class="report" id="accountsReport"></div>
+      </div>
     </div>
   </section>
 
@@ -135,5 +145,6 @@
 <script src="assets/motion.js"></script>
 <script src="assets/pwa.js"></script>
 <script src="assets/roster.js"></script>
+<script src="assets/accounts.js"></script>
 </body>
 </html>

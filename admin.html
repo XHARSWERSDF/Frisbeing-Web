@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Leader access &middot; Frisbeing UF</title>
-<meta name="description" content="Club leader sign-in for the Frisbeing UF team sorter.">
+<title>Account &middot; Frisbeing UF</title>
+<meta name="description" content="Sign in or make a Frisbeing UF account with your Tsinglan school email.">
 <meta name="theme-color" content="#0E2018">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="assets/monogram.png">
@@ -26,73 +26,71 @@
     <a class="lnk" href="index.html">The club</a>
     <a class="lnk" href="sort.html">Sorter</a>
     <a class="lnk" href="roster.html">Members</a>
-    <a class="lnk" href="admin.html" aria-current="page">Leaders</a>
+    <a class="lnk" href="admin.html" aria-current="page">Account</a>
   </nav>
 
   <section class="band-field">
     <div class="inner" style="max-width:720px">
       <div class="head">
-        <p class="eyebrow dim">Leader access</p>
+        <p class="eyebrow dim">Account</p>
         <h2 class="display" id="portalTitle">Sign in</h2>
         <div class="slashes"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-        <p id="portalLede">Sorting teams and editing the roster are for club leaders. Sign in with your Tsinglan school account.</p>
+        <p id="portalLede">Sign in with your Tsinglan Microsoft account. There is nothing to remember: Microsoft knows who you are, and the club decides what you can do.</p>
       </div>
 
       <!-- signed in ------------------------------------------------------ -->
       <div class="panel" id="signedIn" hidden>
         <div class="panel-hd">
-          <h3>You are signed in</h3>
-          <span class="count" id="whoVia"></span>
+          <h3 id="whoName">You are signed in</h3>
+          <span class="count" id="whoRole"></span>
         </div>
         <p class="hint" id="whoEmail" style="color:var(--chalk);font-size:15px"></p>
+        <div class="report" id="whoMember"></div>
         <div class="row">
-          <a class="btn solid" href="sort.html"><span>Go to the sorter</span></a>
-          <a class="btn" href="roster.html"><span>Edit members</span></a>
+          <a class="btn solid" id="goSorter" href="sort.html"><span>Go to the sorter</span></a>
+          <a class="btn" id="goMembers" href="roster.html"><span>Members &amp; accounts</span></a>
           <button class="btn spacer" id="signOut" type="button"><span>Sign out</span></button>
         </div>
       </div>
 
       <!-- signed out ----------------------------------------------------- -->
       <div id="signedOut">
-        <div class="panel" id="googlePanel" hidden>
+        <div class="panel" id="msPanel" hidden>
           <div class="panel-hd">
-            <h3>School account</h3>
-            <span class="count" id="domainLabel"></span>
+            <h3>Tsinglan Microsoft account</h3>
+            <span class="count" id="domainLabel">@tsinglan.org</span>
           </div>
-          <p class="hint">Only club leaders on the school domain can get in. If your account is refused, ask a leader to add you.</p>
-          <div id="googleBtn" style="margin-top:6px"></div>
-          <div class="report" id="googleReport"></div>
+          <p class="hint">The same account you use for Outlook and Teams. First time in, your account is matched to your name on the squad list automatically.</p>
+          <div class="row" style="margin-top:0">
+            <button class="btn solid" id="msBtn" type="button"><span>Sign in with Microsoft</span></button>
+          </div>
+          <div class="report" id="msReport"></div>
         </div>
 
-        <div class="panel" id="setupPanel" hidden>
+        <div class="panel" id="needsServerPanel" hidden>
           <div class="panel-hd">
-            <h3>School sign-in is not set up yet</h3>
+            <h3>Sign-in is not switched on</h3>
+            <span class="count">Needs the server</span>
+          </div>
+          <p class="hint">Sign-in lives on the club server, and this copy of the site is running without one. The club page, squad list and disc still work. Setup is in <code>server/README.md</code>.</p>
+        </div>
+
+        <div class="panel" id="needsSetupPanel" hidden>
+          <div class="panel-hd">
+            <h3>Microsoft sign-in is not set up yet</h3>
             <span class="count">One-time</span>
           </div>
-          <p class="hint">Google sign-in needs a free OAuth client ID, which has to be created once against your own web address. Until then use the leader passcode below. Full steps are in <code>README.md</code> under <b>Admin access</b>.</p>
-        </div>
-
-        <div class="panel" id="passcodePanel" hidden>
-          <div class="panel-hd">
-            <h3>Leader passcode</h3>
-            <span class="count">Backup</span>
-          </div>
-          <p class="hint">Also useful at the field when there is no signal to reach Google.</p>
-          <form id="passForm" class="row" style="margin-top:0">
-            <input type="password" id="passInput" placeholder="Passcode" autocomplete="current-password"
-                   style="flex:1 1 220px;width:auto;font-family:var(--f-mono)">
-            <button class="btn solid" type="submit"><span>Unlock</span></button>
-          </form>
-          <div class="report" id="passReport"></div>
+          <p class="hint">It needs a one-time app registration in <code>entra.microsoft.com</code>, then two values pasted into <code>assets/auth-config.js</code>. Full steps are in <code>README.md</code> under <b>Microsoft sign-in</b>.</p>
         </div>
       </div>
 
       <div class="panel">
-        <div class="panel-hd"><h3>What leaders can do</h3></div>
+        <div class="panel-hd"><h3>Who can do what</h3></div>
         <p class="hint" style="margin-bottom:0">
-          Sort teams &middot; read the attendance list &middot; add and remove members &middot;
-          set skill levels &middot; see the level breakdown.
-          Everyone else can read the club page, watch the disc spin, and see the squad list by name.
+          <b>Players</b> see the squad list and tonight's teams.
+          <b>Admins and the supreme leader</b> sort teams, read the attendance list, edit the squad,
+          see skill levels and manage accounts. Only the supreme leader can remove an admin's account.
+          Skill levels are never shown to players.
         </p>
       </div>
     </div>
@@ -113,7 +111,6 @@
 
 </div>
 
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="assets/server-config.js"></script>
 <script src="assets/auth-config.js"></script>
 <script src="assets/auth.js"></script>

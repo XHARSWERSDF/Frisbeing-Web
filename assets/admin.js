@@ -1,5 +1,5 @@
 /* ==========================================================================
-   FRISBEING UF - leader access portal
+   FRISBEING UF - account page: sign in with Microsoft, and who you are
    ========================================================================== */
 (function () {
   "use strict";
@@ -7,56 +7,44 @@
   var el = function (id) { return document.getElementById(id); };
   var CFG = window.FBAuthConfig || {};
 
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
   function say(target, kind, html) {
-    target.innerHTML = '<div class="rep ' + kind + '">' + html + "</div>";
+    target.innerHTML = html ? '<div class="rep ' + kind + '">' + html + "</div>" : "";
   }
 
   function paint() {
     var user = FBAuth.user();
+    var server = FBAuth.serverMode && FBAuth.serverMode();
+    var canSignIn = FBAuth.canSignIn && FBAuth.canSignIn();
 
     el("signedIn").hidden = !user;
     el("signedOut").hidden = !!user;
 
     if (user) {
+      var admin = FBAuth.isAdmin();
       el("portalTitle").textContent = "You are in";
-      el("portalLede").textContent = "Leader tools are unlocked on this device.";
-      el("whoEmail").textContent = user.via === "google" ? user.email : "Signed in with the leader passcode";
-      el("whoVia").textContent = user.via === "google" ? "School account" : "Passcode";
+      el("portalLede").textContent = admin ? "Leader tools are unlocked." : "Welcome to the squad.";
+      el("goSorter").hidden = !admin;
+      el("goMembers").querySelector("span").textContent = admin ? "Members & accounts" : "See the squad";
+      el("whoName").textContent = user.name;
+      el("whoRole").textContent = FBAuth.ROLE_NAME[user.role] || "";
+      el("whoEmail").textContent = user.email;
+      /* Everyone is told which squad-list entry is theirs - never its tier. */
+      say(el("whoMember"), user.member ? "good" : "warn", user.member
+        ? "On the squad list as <b>" + esc(user.member) + "</b>."
+        : "<b>Not matched to the squad list yet.</b> A leader will link your account to your name.");
       return;
     }
 
     el("portalTitle").textContent = "Sign in";
-    el("portalLede").textContent =
-      "Sorting teams and editing the roster are for club leaders. Sign in with your Tsinglan school account.";
-
-    var configured = FBAuth.configured();
-    el("googlePanel").hidden = !configured;
-    el("setupPanel").hidden = configured;
-    /* A server always accepts the passcode, whatever this file says. */
-    el("passcodePanel").hidden = !(FBAuth.passcodeEnabled() || (FBAuth.serverMode && FBAuth.serverMode()));
-    el("domainLabel").textContent = "@" + (CFG.emailDomain || "");
-  }
-
-  /* The Google script is loaded async, so wait for it before drawing the
-     button. Give up after a few seconds rather than spinning forever - the
-     passcode panel is already on screen as a way through. */
-  function mountGoogle() {
-    if (!FBAuth.configured()) return;
-    var tries = 0;
-    var timer = window.setInterval(function () {
-      tries++;
-      var ok = FBAuth.mountGoogleButton(el("googleBtn"), function (res) {
-        if (res.ok) { paint(); say(el("googleReport"), "good", "<b>Signed in.</b>"); }
-        else say(el("googleReport"), "bad", res.reason);
-      });
-      if (ok || tries > 40) {
-        window.clearInterval(timer);
-        if (!ok) {
-          say(el("googleReport"), "warn",
-            "<b>Google sign-in could not load.</b> You may be offline. Use the leader passcode below.");
-        }
-      }
-    }, 150);
+    el("msPanel").hidden = !canSignIn;
+    el("needsServerPanel").hidden = !!server;
+    el("needsSetupPanel").hidden = !server || canSignIn;
+    el("domainLabel").textContent = "@" + (CFG.emailDomain || "tsinglan.org");
   }
 
   el("signOut").addEventListener("click", function () {
@@ -64,29 +52,24 @@
     paint();
   });
 
-  el("passForm").addEventListener("submit", function (e) {
-    e.preventDefault();
-    var code = el("passInput").value;
-    var done = function (res) {
-      if (res.ok) {
-        el("passInput").value = "";
-        paint();
-        say(el("passReport"), res.offline ? "warn" : "good",
-          res.offline ? "<b>Unlocked offline.</b> " + res.note : "<b>Unlocked.</b>");
-      } else {
-        say(el("passReport"), "bad", res.reason);
-      }
-    };
-    /* With a server the passcode is checked there, not here. */
-    if (FBAuth.serverMode && FBAuth.serverMode()) {
-      say(el("passReport"), "good", "Checking&hellip;");
-      FBAuth.signInWithServer(code).then(done);
-    } else {
-      done(FBAuth.signInWithPasscode(code));
-    }
+  el("msBtn").addEventListener("click", function () {
+    var btn = el("msBtn");
+    btn.disabled = true;
+    say(el("msReport"), "good", "Taking you to Microsoft&hellip;");
+    FBAuth.signInWithMicrosoft().catch(function (e) {
+      btn.disabled = false;
+      say(el("msReport"), "bad", esc(e && e.message ? e.message : "Could not start sign-in."));
+    });
   });
 
   FBAuth.onChange(paint);
+
+  /* If we have just come back from Microsoft, finish the sign-in first, then
+     draw the page in whatever state that leaves us. */
+  FBAuth.completeMicrosoft().then(function (res) {
+    if (res && res.ok === false) say(el("msReport"), "bad", esc(res.reason));
+    paint();
+  });
+
   paint();
-  mountGoogle();
 })();

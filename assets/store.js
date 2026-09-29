@@ -41,13 +41,18 @@
     catch (e) { return false; }
   }
 
+  var TIERS = ["A", "I", "B"];
+
+  /* The server sends players and visitors names without tiers, so a member
+     with no tier is normal here and is kept, with tier null. Only a
+     leader's copy has tiers, and only a leader's copy is ever saved. */
   function clean(list) {
     if (!Array.isArray(list)) return [];
     return list.filter(function (m) {
-      return m && typeof m.name === "string" && ["A", "I", "B"].indexOf(m.tier) >= 0;
+      return m && typeof m.name === "string" && (m.tier == null || TIERS.indexOf(m.tier) >= 0);
     }).map(function (m) {
       var g = (m.gender === "f" || m.gender === "m") ? m.gender : "";
-      return { name: m.name, tier: m.tier, gender: g };
+      return { name: m.name, tier: TIERS.indexOf(m.tier) >= 0 ? m.tier : null, gender: g };
     });
   }
 
@@ -113,7 +118,28 @@
 
     /* ---------------------------------------------------------- startup -- */
 
+    /* Fetch the whole state again, whatever the version number says. */
+    reload: function () {
+      if (!Store.serverMode()) return Promise.resolve(false);
+      return request("/state").then(function (data) {
+        online = true; lastSync = Date.now();
+        applyState(data, true);
+        return true;
+      }).catch(function () {
+        online = false;
+        fire();
+        return false;
+      });
+    },
+
     init: function () {
+      /* Signing in or out changes what the server sends - tiers go to
+         leaders and admins only - so fetch the state again when it happens. */
+      if (root.FBAuth && !Store._authHooked) {
+        Store._authHooked = true;
+        FBAuth.onChange(function () { Store.reload(); });
+      }
+
       /* Show cached data immediately so a slow or absent network never leaves
          the page blank, then refresh from the real source. */
       var cached = read(KEY_CACHE, null);
@@ -197,6 +223,11 @@
 
     saveRoster: function (list) {
       var cleaned = clean(list);
+      /* A copy without tiers came from a signed-out or player view. Saving
+         it would wipe every level, so refuse outright. */
+      if (cleaned.some(function (m) { return !m.tier; })) {
+        return Promise.reject(new Error("This page has not loaded the skill levels yet. Reload it and try again."));
+      }
       if (!Store.serverMode()) {
         state.roster = cleaned;
         write(KEY_LOCAL, cleaned);

@@ -8,7 +8,7 @@
 
    Set apiBase to your server's address and the site switches to SERVER MODE:
    the roster and the team draw live on the server, every device stays in
-   sync, and the leader passcode is checked by the server instead of here.
+   sync, and Microsoft sign-in (accounts, roles, tiers) becomes available.
    ========================================================================== */
 window.FBServer = {
 
