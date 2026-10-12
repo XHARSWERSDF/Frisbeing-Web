@@ -44,11 +44,11 @@
   }
 
   function rosterToText(list_) {
-    var word = { A: "T1", I: "T2", B: "T3" };
+    var word = FB.TIER_NAME;
     var gword = { f: "girl", m: "boy" };
     return list_.map(function (m) {
       /* keep gender in the export so it round-trips through load / paste */
-      return m.name + (m.gender && gword[m.gender] ? "_" + gword[m.gender] : "") + "_" + word[m.tier];
+      return m.name + (m.gender && gword[m.gender] ? "_" + gword[m.gender] : "") + "_" + word[m.tier] + "_" + FB.POSITION_NAME[FB.position(m)];
     }).join("\n");
   }
 
@@ -85,7 +85,7 @@
       }
     }
 
-    var by = { A: 0, I: 0, B: 0 };
+    var by = { A: 0, I: 0, B: 0, U: 0 };
     var gcount = { f: 0, m: 0, u: 0 };
     roster.forEach(function (m) {
       by[m.tier]++;
@@ -102,7 +102,7 @@
       else if (gcount.u === 0) {
         gnote.hidden = false;
         gnote.innerHTML = '<div class="rep good">Gender is set for everyone (' +
-          gcount.f + ' girls, ' + gcount.m + ' boys). Teams are balanced by gender first, then skill.</div>';
+          gcount.f + ' girls, ' + gcount.m + ' boys). The sorter balances size, skill, gender and position.</div>';
       } else if (gcount.u === n) {
         gnote.hidden = false;
         gnote.innerHTML = '<div class="rep warn"><b>No genders set yet.</b> ' +
@@ -125,7 +125,7 @@
       return;
     }
 
-    var order = { A: 0, I: 1, B: 2 };
+    var order = { A: 0, I: 1, B: 2, U: 3 };
     roster.slice().sort(function (a, b) {
       return order[a.tier] - order[b.tier] || a.name.localeCompare(b.name);
     }).forEach(function (m) {
@@ -136,6 +136,28 @@
       nm.className = "nm";
       nm.textContent = m.name;
       row.appendChild(nm);
+      var position = document.createElement("select");
+      position.className = "position-select";
+      position.setAttribute("aria-label", m.name + ": position");
+      ["h", "c"].forEach(function (pos) {
+        var option = document.createElement("option");
+        option.value = pos;
+        option.textContent = FB.POSITION_NAME[pos];
+        option.selected = FB.position(m) === pos;
+        position.appendChild(option);
+      });
+      if (isAdmin()) {
+        position.addEventListener("change", function () {
+          var target = roster.filter(function (x) { return FB.norm(x.name) === FB.norm(m.name); })[0];
+          if (target) { target.position = position.value; save(); }
+        });
+        row.appendChild(position);
+      } else {
+        var badge = document.createElement("span");
+        badge.className = "position-badge";
+        badge.textContent = FB.POSITION_NAME[FB.position(m)];
+        row.appendChild(badge);
+      }
 
       /* Skill levels are a leader tool: members see names only. */
       if (!window.FBAuth || !FBAuth.isAdmin()) {
@@ -164,7 +186,7 @@
 
       var lvl = document.createElement("div");
       lvl.className = "lvl";
-      ["A", "I", "B"].forEach(function (t) {
+      ["A", "I", "B", "U"].forEach(function (t) {
         var b = document.createElement("button");
         b.type = "button";
         b.innerHTML = "<span>" + FB.TIER_NAME[t] + "</span>";
@@ -206,12 +228,12 @@
     roster = res.members;
     save(rosReport);
 
-    var by = { A: 0, I: 0, B: 0 };
+    var by = { A: 0, I: 0, B: 0, U: 0 };
     roster.forEach(function (m) { by[m.tier]++; });
     var out = [{
       kind: "good",
       html: "<b>Saved " + roster.length + " members.</b> " +
-        by.A + " T1, " + by.I + " T2, " + by.B + " T3."
+        by.A + " T1, " + by.I + " T2, " + by.B + " T3" + (by.U ? ", " + by.U + " unclassified" : "") + "."
     }];
     if (res.duplicates.length) {
       out.push({ kind: "warn", html: "<b>" + res.duplicates.length + " duplicate name" +
@@ -267,12 +289,12 @@
         roster = res.members;
         save(pdfReport);
 
-        var by = { A: 0, I: 0, B: 0 };
+        var by = { A: 0, I: 0, B: 0, U: 0 };
         roster.forEach(function (m) { by[m.tier]++; });
         var out = [{
           kind: "good",
           html: "<b>Read " + roster.length + " members from " + esc(file.name) + ".</b> " +
-            by.A + " T1, " + by.I + " T2, " + by.B + " T3. " +
+            by.A + " T1, " + by.I + " T2, " + by.B + " T3" + (by.U ? ", " + by.U + " unclassified" : "") + ". " +
             (FBStore.serverMode()
               ? "Saved to the server \u2014 everyone sees it within a few seconds."
               : "<b>Now press Publish roster</b> below so everyone sees it.")
@@ -300,7 +322,7 @@
   /* ----------------------------------------------------------- add one -- */
 
   var oneTierEl = el("oneTier");
-  ["A", "I", "B"].forEach(function (t) {
+  ["A", "I", "B", "U"].forEach(function (t) {
     var b = document.createElement("button");
     b.type = "button";
     b.innerHTML = "<span>" + FB.TIER_NAME[t] + "</span>";
@@ -308,7 +330,7 @@
     b.addEventListener("click", function () {
       newTier = t;
       Array.prototype.forEach.call(oneTierEl.children, function (c, i) {
-        c.setAttribute("aria-pressed", ["A", "I", "B"][i] === t ? "true" : "false");
+        c.setAttribute("aria-pressed", ["A", "I", "B", "U"][i] === t ? "true" : "false");
       });
     });
     oneTierEl.appendChild(b);
@@ -341,7 +363,7 @@
       say(addReport, [{ kind: "warn", html: "<b>" + esc(name) + "</b> is already on the roster." }]);
       return;
     }
-    roster.push({ name: name, tier: newTier, gender: newGender });
+    roster.push({ name: name, tier: newTier, gender: newGender, position: el("onePosition").value });
     el("oneName").value = "";
     say(addReport, [{ html: "Added <b>" + esc(name) + "</b> as " +
       (newGender ? FB.GENDER_NAME[newGender].toLowerCase() + ", " : "") +
@@ -386,8 +408,8 @@
         return;
       }
       var clean = data.filter(function (m) {
-        return m && typeof m.name === "string" && ["A", "I", "B"].indexOf(m.tier) >= 0;
-      }).map(function (m) { return { name: m.name, tier: m.tier }; });
+        return m && typeof m.name === "string" && FB.TIERS.indexOf(m.tier) >= 0;
+      }).map(function (m) { return { name: m.name, tier: m.tier, gender: FB.parseGender(m.gender), position: FB.position(m) }; });
       if (!clean.length) {
         say(backupReport, [{ kind: "bad", html: "<b>No usable members in that file.</b>" }]);
         return;
@@ -428,8 +450,8 @@
   /* Someone else added a member: fold it in without losing what is on screen. */
   FBStore.onChange(function (status) {
     var incoming = FBStore.getRoster();
-    var a = roster.map(function (m) { return m.name + "|" + m.tier; }).sort().join(",");
-    var b = incoming.map(function (m) { return m.name + "|" + m.tier; }).sort().join(",");
+    var a = roster.map(function (m) { return [m.name, m.tier, m.gender, m.position].join("|"); }).sort().join(",");
+    var b = incoming.map(function (m) { return [m.name, m.tier, m.gender, m.position].join("|"); }).sort().join(",");
     if (a !== b) { roster = incoming; paint(); }
     var badge = el("syncState");
     if (badge) {

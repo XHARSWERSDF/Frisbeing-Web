@@ -41,7 +41,7 @@
     catch (e) { return false; }
   }
 
-  var TIERS = ["A", "I", "B"];
+  var TIERS = ["A", "I", "B", "U"];
 
   /* The server sends players and visitors names without tiers, so a member
      with no tier is normal here and is kept, with tier null. Only a
@@ -52,7 +52,7 @@
       return m && typeof m.name === "string" && (m.tier == null || TIERS.indexOf(m.tier) >= 0);
     }).map(function (m) {
       var g = (m.gender === "f" || m.gender === "m") ? m.gender : "";
-      return { name: m.name, tier: TIERS.indexOf(m.tier) >= 0 ? m.tier : null, gender: g };
+      return { name: m.name, tier: TIERS.indexOf(m.tier) >= 0 ? m.tier : null, gender: g, position: FB.position(m) };
     });
   }
 
@@ -285,8 +285,8 @@
       if (Store.serverMode()) return false;
       var local = clean(read(KEY_LOCAL, []));
       if (!local.length) return false;
-      var a = local.map(function (m) { return m.name + "|" + m.tier; }).sort().join(",");
-      var b = published.map(function (m) { return m.name + "|" + m.tier; }).sort().join(",");
+      var a = local.map(function (m) { return [m.name, m.tier, m.gender, m.position].join("|"); }).sort().join(",");
+      var b = published.map(function (m) { return [m.name, m.tier, m.gender, m.position].join("|"); }).sort().join(",");
       return a !== b;
     },
 

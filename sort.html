@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Tonight &middot; Frisbeing UF</title>
-<meta name="description" content="Is there frisbee tonight? Join the game, then see which team you're on.">
+<title>Sessions &middot; Frisbeing UF</title>
+<meta name="description" content="See who is joining, sign up for today's or tomorrow's session, and find your team.">
 <meta name="theme-color" content="#0E2018">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="assets/monogram.png">
@@ -15,7 +15,7 @@
 <!-- ?v= matches CACHE in sw.js. The old sorter's script is still in phones'
      caches, and it cannot run this page: a URL that cache has never seen is
      fetched fresh instead. Bump both together when these files change. -->
-<link rel="stylesheet" href="assets/brand.css?v=11">
+<link rel="stylesheet" href="assets/brand.css?v=15">
 </head>
 <body>
 
@@ -38,6 +38,13 @@
       <div class="tonight" id="tonight" aria-live="polite">
         <p class="tn-small">Checking tonight&hellip;</p>
       </div>
+      <div class="session-attendance" id="todayParticipants" aria-live="polite" hidden></div>
+    </div>
+  </section>
+
+  <section class="band-field upcoming-band" id="upcomingBand" hidden>
+    <div class="inner">
+      <div class="upcoming-session" id="upcoming" aria-live="polite"></div>
     </div>
   </section>
 
@@ -48,7 +55,7 @@
         <p class="eyebrow">For leaders</p>
         <h2 class="display">Sessions</h2>
         <div class="slashes"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-        <p>Every Tuesday and Thursday is on by default. Tap a day to add a session, call one off, or see who&rsquo;s coming. On game day the supreme leader spins the disc to draw the teams, and everyone who joined is notified.</p>
+        <p>Every Tuesday and Thursday is on by default. Tap a day to add a session, call one off, or see who&rsquo;s coming. On game day an admin draws the teams. Players can join even after the draw, and admins can move players or change their Handle / Cutter position.</p>
       </div>
 
       <div class="cal-top">
@@ -100,11 +107,11 @@
 </div>
 
 <script src="assets/server-config.js"></script>
-<script src="assets/engine.js"></script>
+<script src="assets/engine.js?v=15"></script>
 <script src="assets/auth-config.js"></script>
 <script src="assets/auth.js"></script>
-<script src="assets/motion.js"></script>
+<script src="assets/motion.js?v=15"></script>
 <script src="assets/pwa.js"></script>
-<script src="assets/sort.js?v=11"></script>
+<script src="assets/sort.js?v=15"></script>
 </body>
 </html>

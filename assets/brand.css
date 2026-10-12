@@ -142,6 +142,7 @@ code {
   font-family: var(--f-mono); font-size: 10px; letter-spacing: .2em;
   text-transform: uppercase; color: var(--dim); text-decoration: none;
   padding: 8px 2px; border-bottom: 1px solid transparent;
+  white-space: nowrap;
 }
 .nav a.lnk:hover { color: var(--chalk); }
 .nav a.lnk[aria-current="page"] { color: var(--silver); border-bottom-color: var(--silver); }
@@ -601,6 +602,27 @@ textarea::placeholder, input::placeholder { color: #4E6459; }
 }
 .member .del:hover { color: var(--bad); }
 
+.member:has(.position-select) { grid-template-columns: minmax(140px, 1fr) auto auto auto auto; }
+.position-badge, .team-positions { font-family: var(--f-mono); font-size: 10px; color: var(--silver); }
+.position-badge { margin-left: auto; }
+.team-positions { margin: 0 0 14px; }
+.assignment-row { flex-direction: column; align-items: stretch !important; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.assignment-name { display: flex; align-items: center; gap: 8px; overflow-wrap: anywhere; }
+.assignment-controls { display: flex; gap: 6px; }
+.assignment-controls select, #onePosition {
+  min-width: 0; background: var(--field); color: var(--chalk); border: 1px solid var(--line);
+  padding: 8px; font-family: var(--f-mono); font-size: 11px;
+}
+.assignment-controls select { flex: 1; width: 50%; }
+.assignment-controls select:focus-visible, #onePosition:focus-visible { outline: 2px solid var(--silver); }
+.assignment-controls select:disabled { opacity: .55; }
+.mates small { display: block; font-size: 10px; font-weight: 400; margin-top: 3px; }
+@media (max-width: 700px) {
+  .member:has(.position-select) { grid-template-columns: 1fr auto; }
+  .member .position-select { grid-column: 2; }
+  .member .lvl { grid-column: 1; grid-row: 2; }
+}
+
 .empty {
   border: 1px dashed var(--line); padding: 30px; text-align: center;
   color: var(--dim); font-size: 14px;
@@ -618,14 +640,145 @@ footer .fm {
 footer a { color: var(--silver); text-decoration: none; }
 footer a:hover { color: var(--chalk); }
 
-/* ------------------------------------------------------------- reveal -- */
+/* ------------------------------------------------------------- motion --
+   The entrance hierarchy borrows the same grammar as phystut.com: tracked
+   labels, clipped headline wipes, rising copy, springy cards and staggered
+   children. Here the timing is shorter, the travel is longer and the easing
+   deliberately overshoots a little so it feels like a disc being released. */
+
+:root {
+  --ease-throw: cubic-bezier(.16, 1.22, .34, 1);
+  --ease-snap: cubic-bezier(.2, .82, .24, 1);
+}
+
+@keyframes nav-drop {
+  from { opacity: 0; translate: 0 -100%; }
+}
+@keyframes crest-launch {
+  0%   { opacity: 0; translate: -70px 36px; rotate: -38deg; scale: .56; filter: blur(8px) drop-shadow(0 10px 30px rgba(0,0,0,.5)); }
+  68%  { opacity: 1; translate: 8px -7px; rotate: 8deg; scale: 1.06; }
+  100% { opacity: 1; translate: 0 0; rotate: 0deg; scale: 1; filter: blur(0) drop-shadow(0 10px 30px rgba(0,0,0,.5)); }
+}
+@keyframes hero-track {
+  from { opacity: 0; letter-spacing: .62em; translate: 0 12px; }
+}
+@keyframes hero-wipe {
+  from { opacity: 0; clip-path: inset(-18% 100% -18% 0); translate: -42px 0; }
+}
+@keyframes hero-rise {
+  from { opacity: 0; translate: 0 30px; }
+}
+@keyframes slash-strike {
+  from { opacity: 0; translate: -28px 0; scale: 0 1; }
+}
+@keyframes field-pop {
+  from { opacity: 0; translate: 0 24px; rotate: -1.2deg; scale: .92; }
+}
+
+.motion-ready .nav { animation: nav-drop .48s var(--ease-snap) backwards; }
+.motion-ready .hero .crest { animation: crest-launch .92s var(--ease-throw) .08s backwards; }
+.motion-ready .hero .eyebrow { animation: hero-track .58s var(--ease-snap) .3s backwards; }
+.motion-ready .hero h1 { animation: hero-wipe .72s var(--ease-snap) .4s backwards; }
+.motion-ready .hero .hero-sub { animation: hero-wipe .68s var(--ease-snap) .52s backwards; }
+.motion-ready .hero .lede { animation: hero-rise .55s var(--ease-throw) .66s backwards; }
+.motion-ready .hero .cta-row { animation: hero-rise .55s var(--ease-throw) .76s backwards; }
+.motion-ready .hero .slashes i { animation: slash-strike .42s var(--ease-throw) backwards; transform-origin: left center; }
+.motion-ready .hero .slashes i:nth-child(1) { animation-delay: .58s; }
+.motion-ready .hero .slashes i:nth-child(2) { animation-delay: .62s; }
+.motion-ready .hero .slashes i:nth-child(3) { animation-delay: .66s; }
+.motion-ready .hero .slashes i:nth-child(4) { animation-delay: .70s; }
+.motion-ready .hero .slashes i:nth-child(5) { animation-delay: .74s; }
+.motion-ready .hero .slashes i:nth-child(6) { animation-delay: .78s; }
 
 .rv { opacity: 1; }
-.reveal-on .rv {
-  opacity: 0; transform: translateY(22px);
-  transition: opacity .7s cubic-bezier(.2,.7,.3,1), transform .7s cubic-bezier(.2,.7,.3,1);
+.reveal-on .rv { opacity: 1; transform: none; }
+.reveal-on .motion-item {
+  --motion-x: 0px;
+  --motion-y: 28px;
+  --motion-scale: .98;
+  --motion-rotate: 0deg;
+  transition:
+    opacity .58s var(--ease-snap),
+    translate .72s var(--ease-throw),
+    scale .72s var(--ease-throw),
+    rotate .72s var(--ease-throw),
+    filter .5s ease,
+    clip-path .72s var(--ease-snap),
+    letter-spacing .62s var(--ease-snap);
+  transition-delay: calc(var(--motion-order, 0) * 58ms);
 }
-.reveal-on .rv.in { opacity: 1; transform: none; }
+.reveal-on .motion-title { clip-path: inset(-14% -5% -14% 0); }
+.reveal-on .rv:not(.in) .motion-item {
+  opacity: 0;
+  translate: var(--motion-x) var(--motion-y);
+  scale: var(--motion-scale);
+  rotate: var(--motion-rotate);
+  filter: blur(5px);
+  will-change: opacity, translate, scale;
+}
+.reveal-on .rv:not(.in) .motion-title {
+  --motion-x: -38px;
+  --motion-y: 0px;
+  clip-path: inset(-14% 100% -14% 0);
+  filter: none;
+}
+.reveal-on .rv:not(.in) .motion-eyebrow {
+  --motion-y: 12px;
+  letter-spacing: .52em;
+  filter: none;
+}
+.reveal-on .rv:not(.in) .motion-card {
+  --motion-y: 40px;
+  --motion-scale: .92;
+  --motion-rotate: -1.4deg;
+}
+.reveal-on .rv:not(.in) .motion-photo.motion-left { --motion-x: -54px; --motion-y: 18px; --motion-rotate: -2.2deg; }
+.reveal-on .rv:not(.in) .motion-photo.motion-right { --motion-x: 54px; --motion-y: 18px; --motion-rotate: 2.2deg; }
+.reveal-on .rv:not(.in) .motion-pop { --motion-y: 12px; --motion-scale: .58; --motion-rotate: -7deg; filter: none; }
+
+/* Motion for data-driven rows created after page load. `backwards` keeps the
+   resting state owned by each component, which avoids invisible UI if a
+   browser interrupts an animation. */
+.motion-ready .motion-born { animation: field-pop .52s var(--ease-throw) backwards; animation-delay: calc(var(--motion-order, 0) * 42ms); }
+
+/* Small interactions carry the same directional energy after the entrance. */
+.nav .mark img { transition: rotate .72s var(--ease-throw), scale .28s var(--ease-throw); }
+.nav .mark:hover img { rotate: 360deg; scale: 1.09; }
+.nav a.lnk { transition: color .18s, translate .26s var(--ease-throw), border-color .18s; }
+.nav a.lnk:hover { translate: 0 -3px; }
+.nav a.lnk[aria-current="page"] { animation: hero-track .44s var(--ease-snap) .18s backwards; }
+
+.btn {
+  position: relative; overflow: hidden;
+  transition: background .18s, color .18s, border-color .18s, translate .26s var(--ease-throw), box-shadow .26s;
+}
+.btn::after {
+  content: ""; position: absolute; inset: -80% -35%; pointer-events: none;
+  background: linear-gradient(105deg, transparent 38%, rgba(255,255,255,.3) 50%, transparent 62%);
+  translate: -80% 0; transition: translate .52s var(--ease-snap);
+}
+.btn:hover { translate: 0 -4px; box-shadow: 0 12px 24px rgba(0,0,0,.28); }
+.btn:hover::after { translate: 80% 0; }
+.btn:active { translate: 0 1px; scale: .98; }
+
+.card, .step, .panel, .sess, .member, .team {
+  transition: translate .28s var(--ease-throw), rotate .28s var(--ease-throw), border-color .22s, box-shadow .28s, background-color .22s;
+}
+.card:hover, .step:hover, .panel:hover, .member:hover, .team:hover {
+  translate: 0 -6px; rotate: -.35deg; border-color: rgba(192,192,191,.46);
+  box-shadow: 0 16px 34px rgba(0,0,0,.24);
+}
+.sess:hover { translate: 10px 0; }
+.photo { transition: translate .34s var(--ease-throw), rotate .34s var(--ease-throw), box-shadow .34s, border-color .22s; }
+.photo img { transition: scale .6s var(--ease-snap), filter .35s; }
+.photo:hover { translate: 0 -8px; rotate: -.55deg; border-color: rgba(192,192,191,.52); box-shadow: 0 22px 45px rgba(0,0,0,.32); }
+.photo:hover img { scale: 1.035; filter: contrast(1.04) saturate(1.08); }
+.chip-o { transition: translate .25s var(--ease-throw), scale .25s var(--ease-throw), background-color .2s, color .2s; }
+.chip-o:hover { translate: 0 -5px; scale: 1.06; background: var(--silver); color: var(--green); }
+.slashes i { transition: scale .28s var(--ease-throw), opacity .2s; transform-origin: left center; }
+.slashes:hover i { scale: 1.16 1; }
+.slashes:hover i:nth-child(even) { scale: .84 1; }
+.is-scrolled .nav { box-shadow: 0 12px 30px rgba(0,0,0,.22); }
 
 /* Nobody is labelled by default. Tier markers and the per-team breakdown are
    leader tools, off until someone asks for them. Declared last on purpose:
@@ -651,6 +804,15 @@ footer a:hover { color: var(--chalk); }
   display: flex; flex-direction: column; align-items: center; justify-content: center;
 }
 .tonight > * { max-width: 100%; }
+.session-attendance { max-width: 900px; margin: 40px auto 0; padding-top: 28px; border-top: 1px solid var(--line); text-align: center; }
+.attendance-heading { margin: 0; font-family: var(--f-body); font-size: 18px; font-weight: 600; color: var(--chalk); }
+.attendance-count { display: inline-block; margin-left: 8px; padding: 3px 9px; background: var(--green); color: var(--chalk); font-family: var(--f-mono); font-size: 12px; }
+.participant-list { list-style: none; padding: 0; margin: 20px 0 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.participant-list li { padding: 9px 14px; border: 1px solid var(--line); background: var(--pitch); color: var(--chalk); font-size: 14px; overflow-wrap: anywhere; max-width: 100%; }
+.upcoming-band { border-top: 1px solid var(--line); padding-block: clamp(40px, 7vw, 80px); }
+.upcoming-session { max-width: 900px; margin: 0 auto; text-align: center; }
+.upcoming-session > .eyebrow { margin-bottom: 18px; }
+.upcoming-answer { margin: 28px 0 0; font-size: 20px; color: var(--chalk); }
 .tn-eyebrow { margin-bottom: 22px; }
 .tn-big {
   font-family: var(--f-display); font-weight: 400; color: var(--chalk);
@@ -871,6 +1033,22 @@ body.is-public .head.public-only { display: block; }
   .member { grid-template-columns: 1fr auto; row-gap: 8px; }
   .member .gen { grid-column: 2; }
   .member .del { grid-column: 2; }
+}
+
+/* A phone is too narrow for the wordmark and all four links on one line
+   (they need ~450px). The monogram carries the brand there; the wordmark
+   stays for screen readers, and the links tighten up. */
+@media (max-width: 480px) {
+  .nav { gap: 10px; }
+  .nav .mark span {
+    position: absolute; width: 1px; height: 1px;
+    overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+  .nav a.lnk { letter-spacing: .12em; }
+}
+@media (max-width: 340px) {
+  .nav { gap: 8px; }
+  .nav a.lnk { letter-spacing: .06em; }
 }
 
 @media (prefers-reduced-motion: reduce) {

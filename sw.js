@@ -3,7 +3,7 @@
    The sorter has to work on a field with no signal, so the whole app shell is
    cached on install and served cache-first. Bump CACHE to ship an update.
    ========================================================================== */
-const CACHE = "frisbeing-v11";
+const CACHE = "frisbeing-v15";
 
 const SHELL = [
   "./",
@@ -13,13 +13,16 @@ const SHELL = [
   "./manifest.json",
   "./roster.json",
   "./assets/brand.css",
-  "./assets/brand.css?v=11",          /* sort.html asks for these by version */
+  "./assets/brand.css?v=15",          /* pages ask for these by version */
   "./assets/engine.js",
+  "./assets/engine.js?v=15",
   "./assets/store.js",
+  "./assets/store.js?v=15",
   "./assets/server-config.js",
-  "./assets/motion.js",
-  "./assets/sort.js?v=11",
+  "./assets/motion.js?v=15",
+  "./assets/sort.js?v=15",
   "./assets/roster.js",
+  "./assets/roster.js?v=15",
   "./admin.html",
   "./assets/auth-config.js",
   "./assets/auth.js",

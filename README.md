@@ -38,6 +38,13 @@ Microsoft sign-in (see below).
 
 **What a player sees** — one big message about tonight:
 
+Everyone can see **Who’s joining tonight**, including signed-out visitors.
+The list shows participant names and updates when somebody joins or leaves.
+Tomorrow’s session appears in a separate card when one is scheduled, with its
+own participant list and Join / I’ll pass answer. Sign-ups open one calendar
+day before a session in the club’s timezone; joining tomorrow does not join
+today. A player still needs their school account to answer.
+
 1. No session tonight: *No Current Scheduled Games For Tonight* / *Stay tuned
    next day!* and three spinning 🥏.
 2. A session tonight: *🔥 TONIGHT 🔥 — We shall have a GAME OF “激情❤️‍🔥”
@@ -45,7 +52,8 @@ Microsoft sign-in (see below).
    *Sign in to join* button instead.
 3. After answering: *You're In! Stay tuned for the team selection!* or *It's
    alr, Cya another day!* They can change their answer until the teams are
-   drawn; after that it is locked.
+   drawn. After the draw, late joiners get an existing team automatically,
+   and players can leave and rejoin without reshuffling anyone else.
 4. Once the teams are drawn, everyone who joined gets a **push notification**,
    and their page becomes a disc — *See Your … TEAM!!!* Tapping it spins the
    disc and reveals *You are on team* **A** (or B, C…) with their teammates.
@@ -60,10 +68,13 @@ Microsoft sign-in (see below).
   and T1/T2/T3 when *Show skill levels* is on. Nicknames show next to the
   squad-list name, and anyone not linked to the squad list plays as
   unclassified.
-- **Only the supreme leader draws.** Pick the number of teams, spin the disc,
-  and the server sorts everyone who joined — gender first, then tier (see
+- **Leaders and admins can draw.** Pick the number of teams, spin the disc,
+  and the server sorts everyone who joined by size, tier, gender and position (see
   *How the sorting works*) — and notifies them. The disc stays for a
   **Reshuffle**, and *Take teams back* reopens Join / I'll pass.
+- Every team member has a **Handle** or **Cutter** position. Admins can use
+  the selectors on a team to move a player or change their position for this
+  session. The Members page changes their default position for future draws.
 
 Session draws always use **Fair teams**, because every other edition leaves
 someone out — and a player who pressed Join must always have a team to find.
@@ -103,31 +114,37 @@ kept for the same reason.
 
 ## How the sorting works
 
-**Gender first, then skill.** If members have a gender set (girl / boy), the
-sorter hands out girls and boys in separate passes, so every team gets the
-same number of each give or take one. Skill is balanced underneath that. Set
+**Size, skill, gender and position.** The fair sorter shuffles each group,
+places Handles first to spread them across teams, then deals Cutters. Each
+pick prefers the smallest team, then the team with fewer players of that
+tier, gender and position, then lower total strength. Set
 gender on the Members page (the ♀ / ♂ toggles) or in the list as
 `Name_Gender_Level`, e.g. `Harry Xu_boy_advanced`. Members with no gender set
 are still spread evenly, just not counted as boys or girls.
 
 
-1. Shuffle within each level, so teams differ every week.
-2. Deal level by level. Before each level the draft order is re-sorted so the
-   currently smallest — then weakest — team picks first. Whoever missed out on
-   an advanced player gets first call on the intermediates.
-3. A refinement pass swaps between the strongest and weakest team, but only
-   where every level stays within one of even. On a clean roster it never
-   fires; it exists for when attendance skews the draw.
+1. Shuffle within each position, tier and gender group.
+2. Deal one player at a time, with random tie-breaking between equally
+   balanced teams. Team sizes differ by at most one.
+3. Refine gender balance through swaps that preserve size and do not worsen
+   tier or position distribution, then refine strength without changing gender
+   or position distribution.
 
 **Unclassified players** are people on tonight's list who are not on the
 roster. They count as T3 for team strength and sit out wherever T3 sits out
-(Tournament pool), but they are dealt as their own group, after the gender
-passes and before the refinement pass: whole rounds, smallest teams first, so
-every team gets the same number of them give or take one. Refinement never
-moves them, and they are never saved to the roster.
+(Tournament pool). They are included in fair draws and late joining, with
+Cutter as their default position. Admins can also keep roster members as U
+(unclassified) until a tier is known.
 
-Every team ends up within one player of every other on **each level
-separately**, and within one on total size.
+Late joins use the same pick priorities, keeping all existing assignments
+intact. Manual admin moves may intentionally make team sizes uneven.
+
+The supplied newest tier list is included in `server/roster-update.json`.
+It merges once into an existing server database on startup, preserving
+existing tiers for blank source cells and subsequent admin edits. New blank
+tiers become U, and blank positions become Cutter. Members absent from the
+update remain on the roster. Duplicate source names are merged. School
+emails and nicknames are kept only in the ignored `server/directory.json`.
 
 **Levels are hidden by default.** Rosters show names only — no letters beside
 anyone, no per-team breakdown. *Show skill levels* turns both back on for
@@ -149,7 +166,7 @@ says so — because Join, the draw and notifications all live on the server.
 
 **Server mode** switches the same site over to a shared database:
 
-- Game nights: the calendar, Join / I'll pass, the supreme leader's draw, push
+- Game nights: the calendar, Join / I'll pass, admin team draws and moves, push
   notifications and each player's team reveal (see *Game nights*)
 - A leader adds a member &mdash; everyone with the page open sees it within
   about 10 seconds, without reloading. Answers and draws show up the same way

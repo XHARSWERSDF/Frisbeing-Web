@@ -148,6 +148,46 @@ function load() {
   if (!db.games || typeof db.games !== "object") db.games = {};
   if (!db.push || typeof db.push !== "object") db.push = {};
   if (!Number.isInteger(db.gamesVersion)) db.gamesVersion = 1;
+  db.roster = cleanRoster(db.roster);
+  /* Apply this supplied tier list once, preserving subsequent admin edits. */
+  const update = JSON.parse(fs.readFileSync(path.join(__dirname, "roster-update.json"), "utf8"));
+  if (db.rosterRevision !== update.revision) {
+    for (const m of update.members) {
+      const old = db.roster.find((p) => FB.norm(p.name) === FB.norm(m.previousName || m.name))
+        || db.roster.find((p) => FB.norm(p.name) === FB.norm(m.name));
+      if (old) {
+        const previous = old.name;
+        Object.assign(old, { name: m.name, tier: m.tier || old.tier, position: m.position });
+        for (const u of db.users) if (FB.norm(u.member) === FB.norm(previous)) u.member = m.name;
+      } else db.roster.push({ name: m.name, tier: m.tier || "U", gender: "", position: m.position });
+    }
+    db.rosterRevision = update.revision;
+    db.version++;
+    fresh = true;
+  }
+  /* The GitHub roster supplies known genders, including renamed members.
+     Run once so later deliberate admin edits remain intact. */
+  if (db.genderRevision !== update.genderRevision && Array.isArray(update.genders)) {
+    for (const source of update.genders) {
+      const member = db.roster.find((m) => FB.norm(m.name) === FB.norm(source.name));
+      if (member && ["f", "m"].includes(source.gender)) member.gender = source.gender;
+    }
+    db.genderRevision = update.genderRevision;
+    db.version++;
+    fresh = true;
+  }
+  let migratedDraw = false;
+  for (const game of Object.values(db.games)) if (game.draw) {
+    for (const team of game.draw.teams) for (const p of team) {
+      if (!p.position) {
+        const entry = db.roster.find((m) => FB.norm(m.name) === FB.norm(p.member));
+        p.position = FB.position(entry);
+        migratedDraw = true;
+        fresh = true;
+      }
+    }
+  }
+  if (migratedDraw) db.gamesVersion++;
   pruneSessions();                                     /* drop history past KEEP_DAYS */
   if (fresh) save();
   loadDirectory();
@@ -168,13 +208,13 @@ function cleanRoster(list) {
   const out = [];
   for (const m of list) {
     if (!m || typeof m.name !== "string") continue;
-    if (!["A", "I", "B"].includes(m.tier)) continue;
+    if (!FB.TIERS.includes(m.tier)) continue;
     const name = m.name.replace(/\s+/g, " ").trim();
     if (!name || name.length > 80) continue;
-    const key = name.toLowerCase();
+    const key = FB.norm(name);
     if (seen.has(key)) continue;       /* same name twice would break sorting */
     seen.add(key);
-    out.push({ name, tier: m.tier, gender: (m.gender === "f" || m.gender === "m") ? m.gender : "" });
+    out.push({ name, tier: m.tier, gender: (m.gender === "f" || m.gender === "m") ? m.gender : "", position: FB.position(m) });
     if (out.length >= 500) break;      /* nobody has a 500-person club */
   }
   return out;
@@ -186,7 +226,7 @@ function cleanRoster(list) {
    quietly empty the squad. */
 function missingTiers(list) {
   return Array.isArray(list) && list.some((m) =>
-    m && typeof m.name === "string" && m.name.trim() && !["A", "I", "B"].includes(m.tier));
+    m && typeof m.name === "string" && m.name.trim() && !FB.TIERS.includes(m.tier));
 }
 
 /* ---------------------------------------------------- microsoft tokens --
@@ -367,7 +407,7 @@ function accountView(user) {
 /* -------------------------------------------------------------- sessions --
    The club plays on set weekdays - Tuesday and Thursday unless changed. A
    leader or admin can add a one-off date or call any date off from the
-   calendar. Players answer Join or I'll pass for tonight; the supreme leader
+   calendar. Players answer Join or I'll pass for tonight; a leader or admin
    then draws teams from everyone who joined, and each of them gets a push
    notification to come and see which team they are on.
 
@@ -444,22 +484,23 @@ function joinedPlayers(game) {
       name: user.name || nameFromEmail(user.email),
       member: entry ? entry.name : null,
       tier: entry ? entry.tier : "U",
-      gender: entry ? entry.gender : ""
+      gender: entry ? entry.gender : "",
+      position: FB.position(entry)
     });
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/* One date, as the person asking is allowed to see it. Players learn their
-   own answer and, once teams are drawn, their own team by name - nothing
-   else. Leaders and admins also get who joined, who passed, and every team,
-   with tiers. */
-function gameView(date, who) {
+/* Everyone can see the names joining a session. Only admins get tiers,
+   account links, passing lists and all teams; players get their own team. */
+function gameView(date, who, today = clubDate()) {
   const kind = sessionKind(date);
   const game = db.games[date] || null;
   const view = {
-    date, today: clubDate(), tz: CLUB_TZ, kind, isGame: !!kind,
-    games: db.gamesVersion, signedIn: !!who, role: who ? who.role : null
+    date, today, tz: CLUB_TZ, kind, isGame: !!kind,
+    games: db.gamesVersion, signedIn: !!who, role: who ? who.role : null,
+    participants: game ? joinedPlayers(game).map((p) => ({ name: p.name })) : [],
+    canJoin: !!kind && date >= today && date <= addDays(today, 1)
   };
   if (!who) return view;
 
@@ -471,7 +512,9 @@ function gameView(date, who) {
     const idx = draw.teams.findIndex((t) => t.some((p) => p.id === who.user.id));
     view.mine = idx < 0 ? null : {
       letter: TEAM_LETTERS[idx],
-      members: draw.teams[idx].map(currentName)
+      members: draw.teams[idx].map(currentName),
+      players: draw.teams[idx].map((p) => ({ id: p.id, name: currentName(p), position: FB.position(p) })),
+      position: FB.position(draw.teams[idx].find((p) => p.id === who.user.id))
     };
   }
   if (runsTheClub(who)) {
@@ -483,7 +526,7 @@ function gameView(date, who) {
       : [];
     if (draw) {
       view.teams = draw.teams.map((t) => t.map((p) => ({
-        id: p.id, name: currentName(p), member: p.member, tier: p.tier, gender: p.gender
+        id: p.id, name: currentName(p), member: p.member, tier: p.tier, gender: p.gender, position: FB.position(p)
       })));
     }
   }
@@ -639,7 +682,7 @@ const server = http.createServer(async (req, res) => {
       const full = runsTheClub(whoIs(req));
       return send(res, 200, {
         version: db.version,
-        roster: full ? db.roster : db.roster.map((m) => ({ name: m.name, gender: m.gender })),
+        roster: full ? db.roster : db.roster.map((m) => ({ name: m.name, gender: m.gender, position: FB.position(m) })),
         teams: db.teams,
         updatedAt: db.updatedAt
       });
@@ -849,9 +892,13 @@ const server = http.createServer(async (req, res) => {
     /* --- sessions: tonight's game ---------------------------------------- */
 
     if (route === "/game" && req.method === "GET") {
-      const date = url.searchParams.get("date") || clubDate();
+      const today = clubDate();
+      const date = url.searchParams.get("date") || today;
       if (!isDateString(date)) return send(res, 400, { error: "That is not a date." });
-      return send(res, 200, gameView(date, whoIs(req)));
+      const who = whoIs(req);
+      const view = gameView(date, who, today);
+      if (!url.searchParams.has("date")) view.upcoming = gameView(addDays(today, 1), who, today);
+      return send(res, 200, view);
     }
 
     const rsvp = /^\/game\/(\d{4}-\d{2}-\d{2})\/rsvp$/.exec(route);
@@ -866,11 +913,22 @@ const server = http.createServer(async (req, res) => {
       const date = rsvp[1];
       if (!isDateString(date) || !sessionKind(date)) return send(res, 400, { error: "There is no game on that day." });
       if (date < clubDate()) return send(res, 400, { error: "That game is over." });
+      if (date > addDays(clubDate(), 1)) return send(res, 400, { error: "Joining opens the day before the session." });
       const body = await readBody(req);
       if (body.status !== "in" && body.status !== "out") return send(res, 400, { error: "Answer in or out." });
       const game = gameFor(date);
-      if (game.draw) return send(res, 409, { error: "The teams for this game are already out." });
+      if (game.rsvps[who.user.id] === body.status) return send(res, 200, gameView(date, who));
       game.rsvps[who.user.id] = body.status;
+      if (game.draw) {
+        if (body.status === "out") {
+          game.draw.teams = game.draw.teams.map((t) => t.filter((p) => p.id !== who.user.id));
+        } else if (!game.draw.teams.some((t) => t.some((p) => p.id === who.user.id))) {
+          const player = joinedPlayers(game).find((p) => p.id === who.user.id);
+          const idx = FB.chooseTeam(game.draw.teams, player);
+          game.draw.teams[idx].push(player);
+        }
+        game.draw.updatedAt = Date.now();
+      }
       db.gamesVersion++;
       save();
       return send(res, 200, gameView(date, who));
@@ -880,7 +938,7 @@ const server = http.createServer(async (req, res) => {
     if (draw && (req.method === "POST" || req.method === "DELETE")) {
       const who = whoIs(req);
       if (!who) return send(res, 401, { error: "Sign in first." });
-      if (who.role !== "leader") return send(res, 403, { error: "Only the supreme leader draws the teams." });
+      if (!runsTheClub(who)) return send(res, 403, { error: "Only admins can draw the teams." });
       const date = draw[1];
       if (!isDateString(date) || !sessionKind(date)) return send(res, 400, { error: "There is no game on that day." });
       if (date < clubDate()) return send(res, 400, { error: "That game is over." });
@@ -894,6 +952,8 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, gameView(date, who));
       }
 
+      if (date !== clubDate()) return send(res, 400, { error: "Teams can be drawn on the session day." });
+
       const body = await readBody(req);
       const n = Math.floor(Number(body.n));
       if (!(n >= 2 && n <= TEAM_LETTERS.length)) {
@@ -903,8 +963,8 @@ const server = http.createServer(async (req, res) => {
       if (players.length < n) {
         return send(res, 400, { error: players.length + " joined so far - not enough for " + n + " teams." });
       }
-      /* Fair teams: everyone who joined plays, balanced by gender first and
-         then by tier. The other editions leave people out, which would leave
+      /* Fair teams: everyone who joined plays, balanced by size, tier,
+         gender and position. The other editions leave people out, which would leave
          someone who pressed Join with no team to find. */
       const result = FB.sort(players, "fair", n);
       if (result.error) return send(res, 400, { error: result.error });
@@ -912,7 +972,7 @@ const server = http.createServer(async (req, res) => {
         at: Date.now(),
         by: who.user.email,
         teams: result.teams.map((t) => t.map((p) => ({
-          id: p.id, name: p.name, member: p.member, tier: p.tier, gender: p.gender
+          id: p.id, name: p.name, member: p.member, tier: p.tier, gender: p.gender, position: FB.position(p)
         })))
       };
       db.gamesVersion++;
@@ -920,6 +980,44 @@ const server = http.createServer(async (req, res) => {
       /* Tell everyone on a team - except whoever just pressed the disc. */
       const notifying = notifyUsers(players.map((p) => p.id).filter((id) => id !== who.user.id));
       return send(res, 200, { ...gameView(date, who), notifying });
+    }
+
+    /* Move a single member, or change their position for this session only. */
+    const assignment = /^\/game\/(\d{4}-\d{2}-\d{2})\/assignment$/.exec(route);
+    if (assignment && req.method === "PUT") {
+      const who = whoIs(req);
+      if (!who) return send(res, 401, { error: "Sign in first." });
+      if (!runsTheClub(who)) return send(res, 403, { error: "Only admins can change teams." });
+      const date = assignment[1];
+      if (!isDateString(date) || !sessionKind(date)) return send(res, 400, { error: "There is no game on that day." });
+      if (date < clubDate()) return send(res, 400, { error: "That game is over." });
+      const body = await readBody(req);
+      const game = db.games[date];
+      if (!game || !game.draw) return send(res, 409, { error: "Draw the teams first." });
+      const source = game.draw.teams.findIndex((t) => t.some((p) => p.id === body.id));
+      if (source < 0) return send(res, 404, { error: "That player is no longer on a team. Refresh and try again." });
+      if (body.team !== undefined && (!Number.isInteger(body.team) || body.team < 0 || body.team >= game.draw.teams.length)) {
+        return send(res, 400, { error: "Choose an existing team." });
+      }
+      if (body.position !== undefined && !["h", "c"].includes(body.position)) {
+        return send(res, 400, { error: "Choose Handle or Cutter." });
+      }
+      if (body.team === undefined && body.position === undefined) return send(res, 400, { error: "Choose a team or position." });
+      const player = game.draw.teams[source].find((p) => p.id === body.id);
+      const target = body.team === undefined ? source : body.team;
+      if (target === source && (body.position === undefined || body.position === FB.position(player))) {
+        return send(res, 200, gameView(date, who));
+      }
+      if (target !== source) {
+        game.draw.teams[source] = game.draw.teams[source].filter((p) => p.id !== player.id);
+        game.draw.teams[target].push(player);
+      }
+      if (body.position !== undefined) player.position = body.position;
+      game.draw.updatedAt = Date.now();
+      db.gamesVersion++;
+      save();
+      notifyUsers([player.id]);
+      return send(res, 200, gameView(date, who));
     }
 
     /* --- push notifications ---------------------------------------------- */
@@ -955,7 +1053,7 @@ module.exports = { verifyMicrosoftToken };
 
 if (require.main === module) {
   load();
-  server.listen(PORT, () => {
+  server.listen(PORT, process.env.HOST, () => {
     console.log(`Frisbeing API listening on http://localhost:${PORT}`);
     console.log(`  ${db.roster.length} members, ${db.users.length} accounts, version ${db.version}`);
     console.log(`  data file: ${DATA_FILE}`);

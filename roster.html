@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Space+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap">
-<link rel="stylesheet" href="assets/brand.css">
+<link rel="stylesheet" href="assets/brand.css?v=15">
 </head>
 <body>
 
@@ -58,7 +58,7 @@
           <h3>Or paste the whole roster</h3>
           <span class="count" id="rosterCount">0 members</span>
         </div>
-        <p class="hint">One member per line as <code>Name_Gender_Tier</code>, e.g. <code>Harry Xu_boy_T1</code> or <code>Cindy Lin_girl_T2</code> (gender and tier in any order). Tiers: T1 (strongest), T2, T3. Saving replaces the whole roster.</p>
+        <p class="hint">One member per line as <code>Name_Gender_Tier_Position</code>, e.g. <code>Harry Xu_boy_T1_Handle</code>. Gender is optional; position defaults to Cutter. Tiers: T1 (strongest), T2, T3, U (unclassified). Saving replaces the whole roster.</p>
         <textarea id="rosterInput" rows="10" spellcheck="false"
           placeholder="Harry Xu_boy_T1&#10;Cindy Lin_girl_T2&#10;Leo Zeng_boy_T3"></textarea>
         <div class="row">
@@ -75,6 +75,7 @@
           <input type="text" id="oneName" placeholder="Name" style="flex:1 1 200px;width:auto">
           <div class="modes" id="oneGender" role="group" aria-label="Gender (optional)"></div>
           <div class="modes" id="oneTier" role="group" aria-label="Level"></div>
+          <select id="onePosition" aria-label="Position"><option value="c">Cutter</option><option value="h">Handle</option></select>
           <button class="btn solid" id="addOne" type="button"><span>Add</span></button>
         </div>
         <div class="report" id="addReport"></div>
@@ -113,7 +114,7 @@
         <p class="eyebrow dim">Current squad</p>
         <h2 class="display" id="squadHeading">Nobody yet</h2>
         <div class="slashes"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-        <p class="admin-only">Tap &#9792; / &#9794; to set gender, and A / I / B for level. Teams are balanced by gender first, then skill.</p>
+        <p class="admin-only">Set each member’s gender, tier, and Handle / Cutter position. The sorter balances team sizes, skill, gender, and positions.</p>
         <p class="public-only">Everyone on the Frisbeing UF roster.</p>
       </div>
       <div class="report" id="genderNote" hidden></div>
@@ -138,13 +139,13 @@
 </div>
 
 <script src="assets/server-config.js"></script>
-<script src="assets/engine.js"></script>
-<script src="assets/store.js"></script>
+<script src="assets/engine.js?v=15"></script>
+<script src="assets/store.js?v=15"></script>
 <script src="assets/auth-config.js"></script>
 <script src="assets/auth.js"></script>
-<script src="assets/motion.js"></script>
+<script src="assets/motion.js?v=15"></script>
 <script src="assets/pwa.js"></script>
-<script src="assets/roster.js"></script>
+<script src="assets/roster.js?v=15"></script>
 <script src="assets/accounts.js"></script>
 </body>
 </html>

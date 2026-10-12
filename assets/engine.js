@@ -12,13 +12,20 @@
      internally so nothing downstream had to change; only the display name
      and the accepted words moved to T1/T2/T3. A=T1, I=T2, B=T3.
 
-     U (unclassified) is not a level anyone on the roster can have. It marks
-     people on tonight's list who are not on the roster at all: they weigh the
+     U (unclassified) marks members awaiting a tier and people on tonight's
+     list who are not on the roster at all: they weigh the
      same as T3 and go wherever T3 goes, but are dealt as their own group so
      every team gets an even share of the unknowns. */
   FB.TIERS = ["A", "I", "B", "U"];
   FB.TIER_NAME = { A: "T1", I: "T2", B: "T3", U: "U" };
   FB.WEIGHT = { A: 3, I: 2, B: 1, U: 1 };
+  FB.POSITION_NAME = { h: "Handle", c: "Cutter" };
+  FB.parsePosition = function (raw) {
+    var v = norm(raw);
+    return ["h", "handle", "handler"].indexOf(v) >= 0 ? "h"
+      : ["c", "cut", "cutter"].indexOf(v) >= 0 ? "c" : null;
+  };
+  FB.position = function (p) { return FB.parsePosition(p && p.position) || "c"; };
 
   FB.MODES = {
     fair: {
@@ -26,7 +33,7 @@
       label: "Fair teams",
       tiers: ["A", "I", "B"],
       anchorA: 0,
-      blurb: "Everyone who turned up, balanced by gender first, then across all three tiers."
+      blurb: "Everyone who turned up, balanced by size, tier, gender and Handle / Cutter position."
     },
     tournament: {
       key: "tournament",
@@ -80,7 +87,8 @@
   var TIER_WORDS = {
     A: ["t1", "tier1", "tierone", "advanced", "advance", "adv", "a", "high", "expert", "elite", "高级", "高"],
     I: ["t2", "tier2", "tiertwo", "intermediate", "intermediates", "inter", "int", "i", "mid", "middle", "medium", "中级", "中"],
-    B: ["t3", "tier3", "tierthree", "beginner", "beginners", "begin", "beg", "b", "new", "novice", "rookie", "starter", "初级", "初", "新手"]
+    B: ["t3", "tier3", "tierthree", "beginner", "beginners", "begin", "beg", "b", "new", "novice", "rookie", "starter", "初级", "初", "新手"],
+    U: ["u", "unclassified"]
   };
 
   FB.parseTier = function (raw) {
@@ -165,8 +173,10 @@
 
       name = tidySpace(stripDecoration(name || ""));
 
-      var tier = null, gender = "";
+      var tier = null, gender = "", position = "c";
       attrs.forEach(function (a) {
+        var pos = FB.parsePosition(a);
+        if (pos) { position = pos; return; }
         var t = FB.parseTier(a);
         if (t && !tier) { tier = t; return; }
         var g = FB.parseGender(a);
@@ -194,7 +204,7 @@
         return;
       }
       seen[key] = true;
-      members.push({ name: name, tier: tier, gender: gender });
+      members.push({ name: name, tier: tier, gender: gender, position: position });
     });
 
     return { members: members, errors: errors, duplicates: duplicates };
@@ -339,21 +349,36 @@
   FB.shuffle = shuffle;
 
   function score(team) {
-    return team.reduce(function (s, p) { return s + FB.WEIGHT[p.tier]; }, 0);
+    return team.reduce(function (s, p) { return s + (FB.WEIGHT[p.tier] || 1); }, 0);
   }
   FB.score = score;
 
   function counts(team) {
     /* tiers in capitals; lower-case u is "gender not set", not unclassified */
-    var c = { A: 0, I: 0, B: 0, U: 0, f: 0, m: 0, u: 0 };
+    var c = { A: 0, I: 0, B: 0, U: 0, f: 0, m: 0, u: 0, h: 0, c: 0 };
     team.forEach(function (p) {
       c[p.tier]++;
       var g = p.gender === "f" ? "f" : p.gender === "m" ? "m" : "u";
       c[g]++;
+      c[FB.position(p)]++;
     });
     return c;
   }
   FB.counts = counts;
+
+  /* Insert one player without changing anyone else's assignment. Shuffling
+     candidates before the stable sort makes equally balanced teams random. */
+  FB.chooseTeam = function (teams, player) {
+    if (!teams.length) return -1;
+    var stats = teams.map(counts), g = genderKey(player) || "u", pos = FB.position(player);
+    return shuffle(teams.map(function (_, i) { return i; })).sort(function (a, b) {
+      return teams[a].length - teams[b].length
+        || stats[a][player.tier] - stats[b][player.tier]
+        || stats[a][g] - stats[b][g]
+        || stats[a][pos] - stats[b][pos]
+        || score(teams[a]) - score(teams[b]);
+    })[0];
+  };
 
   function genderKey(p) { return p.gender === "f" ? "f" : p.gender === "m" ? "m" : ""; }
   function genderCount(team, g) {
@@ -429,6 +454,21 @@
     for (i = 0; i < n; i++) teams.push([]);
     shuffle(built.anchors.slice()).forEach(function (p, k) { teams[k % n].push(p); });
 
+    if (built.mode.key === "fair") {
+      /* Deal scarce Handles first, then Cutters. Each tier/gender group is
+         shuffled, and every pick keeps total size within one player. */
+      ["h", "c"].forEach(function (pos) {
+        FB.TIERS.forEach(function (tier) {
+          gendersPresent(built.pool.concat(built.unclassified)).forEach(function (g) {
+            shuffle(built.pool.concat(built.unclassified).filter(function (p) {
+              return FB.position(p) === pos && p.tier === tier && genderKey(p) === g;
+            })).forEach(function (p) { teams[FB.chooseTeam(teams, p)].push(p); });
+          });
+        });
+      });
+      return teams;
+    }
+
     gendersPresent(built.pool).forEach(function (g) {
       built.mode.tiers.forEach(function (tier) {
         var tp = shuffle(built.pool.filter(function (p) {
@@ -481,6 +521,7 @@
           /* Only swap same-gender players, so a skill tidy-up can never undo
              the gender balance the draft just built. */
           if (genderKey(a) !== genderKey(b)) return;
+          if (FB.position(a) !== FB.position(b)) return;
           var d = FB.WEIGHT[a.tier] - FB.WEIGHT[b.tier];
           if (d <= 0) return;
           var nH = { A: cH.A, I: cH.I, B: cH.B }, nL = { A: cL.A, I: cL.I, B: cL.B };
@@ -504,7 +545,43 @@
   FB.sort = function (players, modeKey, n) {
     var built = FB.build(players, modeKey, n);
     if (built.error) return built;
-    built.teams = FB.refine(FB.draft(built, n), built, n);
+    var teams = FB.draft(built, n);
+    if (modeKey === "fair") {
+      /* Tidy gender distribution with size-preserving swaps. Keep the tier
+         and position spreads achieved by the deal intact. */
+      for (var pass = 0; pass < players.length; pass++) {
+        var stats = teams.map(counts), best = null, bestGain = 0;
+        teams.forEach(function (a, i) {
+          teams.forEach(function (b, j) {
+            if (j <= i) return;
+            a.forEach(function (p, x) {
+              b.forEach(function (q, y) {
+                var gp = genderKey(p) || "u", gq = genderKey(q) || "u";
+                if (gp === gq) return;
+                var gain = 2 * (stats[i][gp] - stats[j][gp] + stats[j][gq] - stats[i][gq] - 2);
+                if (gain <= bestGain) return;
+                var delta = {};
+                [p.tier, FB.position(p)].forEach(function (k) { delta[k] = (delta[k] || 0) - 1; });
+                [q.tier, FB.position(q)].forEach(function (k) { delta[k] = (delta[k] || 0) + 1; });
+                var safe = Object.keys(delta).every(function (k) {
+                  var before = stats.map(function (s) { return s[k]; });
+                  var after = before.slice();
+                  after[i] += delta[k]; after[j] -= delta[k];
+                  return Math.max.apply(null, after) - Math.min.apply(null, after)
+                    <= Math.max(1, Math.max.apply(null, before) - Math.min.apply(null, before));
+                });
+                if (safe) { best = [i, x, j, y]; bestGain = gain; }
+              });
+            });
+          });
+        });
+        if (!best) break;
+        var tmp = teams[best[0]][best[1]];
+        teams[best[0]][best[1]] = teams[best[2]][best[3]];
+        teams[best[2]][best[3]] = tmp;
+      }
+    }
+    built.teams = FB.refine(teams, built, n);
     return built;
   };
 

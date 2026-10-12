@@ -9,8 +9,8 @@
 
    LEADERS AND ADMINS also get the calendar (every Tuesday and Thursday by
    default; tap a day to add a session or call one off) and, for tonight,
-   who joined and who passed. The SUPREME LEADER spins the disc to draw the
-   teams; the server sorts everyone who joined (gender first, then tier) and
+   who joined and who passed. A leader or admin spins the disc to draw the
+   teams; the server balances size, tier, gender and positions and
    sends each of them a push notification.
 
    Everything here needs the club server. The server decides what "tonight"
@@ -24,7 +24,8 @@
   var el = function (id) { return document.getElementById(id); };
   var tonightEl = el("tonight"), bandEl = el("leaderBand"), gridEl = el("calGrid"),
       monthEl = el("calMonth"), subEl = el("calSub"), dayEl = el("dayPanel"),
-      toggleEl = el("tiersToggle");
+      toggleEl = el("tiersToggle"), todayParticipantsEl = el("todayParticipants"),
+      upcomingEl = el("upcoming"), upcomingBandEl = el("upcomingBand");
   var reduce = !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
 
   var MONTHS = ["January", "February", "March", "April", "May", "June", "July",
@@ -41,7 +42,11 @@
 
   var state = {
     tonight: null,      /* the server's view of today, for whoever is asking */
+    upcoming: null,     /* tomorrow has its own attendance and answer */
+    changingUpcoming: false,
+    loadRequest: 0,
     games: null,        /* last seen sessions counter - polling compares it */
+    rosterVersion: null,
     loadedAt: 0,
     changing: false,    /* player asked to change their answer */
     month: null,        /* "YYYY-MM" in the calendar */
@@ -61,7 +66,6 @@
   function serverMode() { return !!(SRV.apiBase && String(SRV.apiBase).trim()); }
   function signedIn() { return !!(window.FBAuth && FBAuth.user()); }
   function isAdmin() { return !!(window.FBAuth && FBAuth.isAdmin()); }
-  function isLeader() { return !!(window.FBAuth && FBAuth.isSupremeLeader()); }
   function myName() { var u = window.FBAuth && FBAuth.user(); return u ? u.name : ""; }
 
   function esc(s) {
@@ -111,7 +115,8 @@
 
   function noGameHtml() {
     return '<h2 class="tn-big">No Current Scheduled Games For Tonight</h2>' +
-      '<p class="tn-small">Stay tuned next day!</p>' +
+      '<p class="tn-small">' + (state.upcoming && state.upcoming.isGame
+        ? 'Tomorrow’s session is open for sign-ups below.' : 'Stay tuned next day!') + '</p>' +
       '<div class="tn-discs" aria-hidden="true"><span class="emoji">🥏</span>' +
       '<span class="emoji">🥏</span><span class="emoji">🥏</span></div>';
   }
@@ -123,11 +128,34 @@
       '<span class="emoji">❤️‍🔥</span>”</span> <span class="word">Frisbee</span></p>';
   }
 
-  function choiceHtml() {
+  function choiceHtml(tomorrow) {
     return '<div class="tn-actions">' +
-      '<button class="btn solid big" data-act="join" type="button"><span>Join</span></button>' +
+      '<button class="btn solid big" data-act="join" type="button"><span>' + (tomorrow ? 'Join tomorrow' : 'Join') + '</span></button>' +
       '<button class="btn big" data-act="pass" type="button"><span>I’ll pass</span></button>' +
-      '</div><p class="tn-error" id="tnError"></p>';
+      '</div><p class="tn-error" id="' + (tomorrow ? 'upcomingError' : 'tnError') + '"></p>';
+  }
+
+  function participantsHtml(v, heading) {
+    var people = v.participants || [];
+    return '<h3 class="attendance-heading">' + esc(heading) + ' <span class="attendance-count">' + people.length + '</span></h3>' +
+      (people.length ? '<ul class="participant-list">' + people.map(function (p) {
+        return '<li>' + esc(p.name) + '</li>';
+      }).join('') + '</ul>' : '<p class="tn-note">Nobody has joined yet. Be the first!</p>');
+  }
+
+  function renderUpcoming() {
+    var v = state.upcoming;
+    upcomingBandEl.hidden = !serverMode() || !v || !v.isGame;
+    if (upcomingBandEl.hidden) { upcomingEl.innerHTML = ''; return; }
+    var h = '<p class="eyebrow">Tomorrow’s session</p><h2 class="tn-big tn-answer">' + esc(longDate(v.date)) + '</h2>' +
+      '<p class="tn-small">Sign up a day ahead.</p>';
+    if (!v.signedIn) h += signInHtml();
+    else if (state.changingUpcoming || !v.me || !v.me.rsvp) h += choiceHtml(true);
+    else {
+      h += '<p class="upcoming-answer">' + (v.me.rsvp === 'in' ? 'You’re in for tomorrow!' : 'You’re passing on tomorrow’s session.') + '</p>' +
+        '<button class="tn-link" data-act="change" type="button">Change tomorrow’s answer</button><p class="tn-error" id="upcomingError"></p>';
+    }
+    upcomingEl.innerHTML = h + '<div class="session-attendance">' + participantsHtml(v, 'Who’s joining tomorrow') + '</div>';
   }
 
   function inHtml() {
@@ -154,8 +182,8 @@
 
   function revealHtml(mine) {
     var me = myName();
-    var names = mine.members.slice().sort(function (a, b) {
-      return (b === me) - (a === me) || a.localeCompare(b);
+    var names = (mine.players || mine.members.map(function (n) { return { name: n, position: "c" }; })).slice().sort(function (a, b) {
+      return (b.name === me) - (a.name === me) || a.name.localeCompare(b.name);
     });
     /* Same sizes as the "See Your / TEAM!!!" screen it replaces, so the
        words land where the last ones were and the letter drops in below. */
@@ -164,11 +192,12 @@
     return '<h2 class="reveal-head"><span class="see-your">You are on</span> ' +
       '<span class="see-team">Team</span> ' +
       '<span class="team-letter">' + esc(mine.letter) + '</span></h2>' +
-      '<p class="eyebrow dim mates-hd">Your team &middot; ' + names.length + ' players</p>' +
-      '<ul class="mates">' + names.map(function (n, i) {
-        return '<li' + (n === me ? ' class="me"' : '') + ' style="animation-delay:' +
-          (reduce ? 0 : 750 + i * 60) + 'ms"><span>' + esc(n) + '</span></li>';
-      }).join("") + '</ul>';
+      '<p class="eyebrow mates-hd">Your role: ' + FB.POSITION_NAME[mine.position || "c"] + '</p>' +
+      '<p class="eyebrow dim">Your team &middot; ' + names.length + ' players</p>' +
+      '<ul class="mates">' + names.map(function (p, i) {
+        return '<li' + (p.name === me ? ' class="me"' : '') + ' style="animation-delay:' +
+          (reduce ? 0 : 750 + i * 60) + 'ms"><span>' + esc(p.name) + ' <small>' + FB.POSITION_NAME[FB.position(p)] + '</small></span></li>';
+      }).join("") + '</ul><button class="tn-link" data-act="pass" type="button">Leave this session</button><p class="tn-error" id="tnError"></p>';
   }
 
   function signInHtml() {
@@ -179,6 +208,8 @@
   function renderTonight() {
     if (state.spinning) return;
     var t = state.tonight;
+    todayParticipantsEl.hidden = !serverMode() || !t || !t.isGame;
+    todayParticipantsEl.innerHTML = todayParticipantsEl.hidden ? '' : participantsHtml(t, 'Who’s joining tonight');
     if (!serverMode()) {
       return paint('<p class="eyebrow dim tn-eyebrow">Tonight</p>' +
         '<h2 class="tn-big">Sessions are switched off</h2>' +
@@ -189,15 +220,15 @@
     if (!t.signedIn) return paint(gameHtml() + signInHtml());
 
     if (t.drawn) {
-      if (!t.mine) return paint(outHtml(false));
+      if (!t.mine) return paint(gameHtml() + '<p class="tn-note">Teams are out. You can still join and get a team straight away.</p>' + choiceHtml());
       return paint(revealedAlready(t) ? revealHtml(t.mine) : seeYourTeamHtml());
     }
     if (state.changing || !t.me || !t.me.rsvp) return paint(gameHtml() + choiceHtml());
     return paint(t.me.rsvp === "in" ? inHtml() : outHtml(true));
   }
 
-  function showError(msg) {
-    var e = el("tnError");
+  function showError(msg, upcoming) {
+    var e = el(upcoming ? "upcomingError" : "tnError");
     if (e) e.textContent = msg;
   }
 
@@ -205,21 +236,25 @@
      still gets its own spin. */
   function revealId(t) {
     var u = window.FBAuth && FBAuth.user();
-    return (u ? u.email : "") + "|" + t.date + ":" + t.draw.at;
+    return (u ? u.email : "") + "|" + t.date + ":" + t.draw.at + ":" + (t.mine ? t.mine.letter : "");
   }
   function revealedAlready(t) { return readPref(REVEAL_KEY) === revealId(t); }
   function rememberReveal(t) { writePref(REVEAL_KEY, revealId(t)); }
 
   function loadTonight() {
+    var request = ++state.loadRequest;
     return api("GET", "/game").then(function (v) {
+      if (request !== state.loadRequest) return;
       var before = state.tonight && state.tonight.today;
       state.tonight = v;
+      state.upcoming = v.upcoming || null;
       state.games = v.games;
       state.loadedAt = Date.now();
       /* Past midnight "tonight" is a new day. A leader who was looking at
          tonight moves on with it instead of staring at yesterday. */
       if (before && v.today !== before) {
         state.changing = false;
+        state.changingUpcoming = false;
         if (isAdmin() && state.selected === before) {
           state.selected = v.today;
           state.month = v.today.slice(0, 7);
@@ -227,30 +262,36 @@
         }
       }
       renderTonight();
+      renderUpcoming();
     }, function (err) {
+      if (request !== state.loadRequest) return;
       if (!state.tonight) {
         paint('<h2 class="tn-big">Can’t reach the club</h2><p class="tn-small">' + esc(err.message) + '</p>');
       }
     });
   }
 
-  function answer(status) {
-    var t = state.tonight;
+  function answer(status, upcoming) {
+    var t = upcoming ? state.upcoming : state.tonight;
+    if (!t || !t.canJoin) return;
+    ++state.loadRequest;   /* discard any read started before this answer */
     /* Asking for notification permission has to start inside the tap itself,
        so it is kicked off before the answer goes to the server. */
     var asking = status === "in" ? turnOnPush(true) : null;
     state.busy = true;
     api("PUT", "/game/" + t.date + "/rsvp", { status: status }).then(function (v) {
       state.busy = false;
-      state.changing = false;
-      state.tonight = v;
+      if (upcoming) { state.changingUpcoming = false; state.upcoming = v; }
+      else { state.changing = false; state.tonight = v; }
       state.games = v.games;
       renderTonight();
+      renderUpcoming();
       if (asking) asking.then(function () { renderTonight(); });
+      loadTonight();  /* update both lists, including any simultaneous joins */
       if (isAdmin()) refreshLeader();
     }, function (err) {
       state.busy = false;
-      showError(err.message);
+      showError(err.message, upcoming);
       if (err.status === 409) loadTonight();   /* the teams came out meanwhile */
     });
   }
@@ -443,6 +484,15 @@
     else if (act === "change") { state.changing = true; renderTonight(); }
     else if (act === "notify") turnOnPush(true).then(function () { renderTonight(); });
     else if (act === "reveal") spinReveal(b);
+  });
+
+  upcomingEl.addEventListener("click", function (e) {
+    var b = e.target.closest('[data-act]');
+    if (!b || b.disabled || state.busy || state.spinning) return;
+    var act = b.getAttribute('data-act');
+    if (act === 'join') answer('in', true);
+    else if (act === 'pass') answer('out', true);
+    else if (act === 'change') { state.changingUpcoming = true; renderUpcoming(); }
   });
 
   /* ------------------------------------------------------ notifications --
@@ -641,6 +691,7 @@
       ? '<ul class="who-list' + (passed ? " passed" : "") + '">' + list.map(function (p) {
           return '<li>' + (passed ? "" : '<span class="g" aria-hidden="true">' + genderMark(p.gender) + '</span>' + tierHtml(p.tier)) +
             nameHtml(p) +
+            (passed ? '' : '<span class="position-badge">' + FB.POSITION_NAME[FB.position(p)] + '</span>') +
             (!passed && !p.member ? '<span class="unl" title="Not linked to the squad list yet, so they play as unclassified">not on squad list</span>' : '') +
             '</li>';
         }).join("") + '</ul>'
@@ -653,10 +704,16 @@
       var c = FB.counts(team);
       var rows = team.slice().sort(function (a, b) {
         return FB.TIERS.indexOf(a.tier) - FB.TIERS.indexOf(b.tier) || a.name.localeCompare(b.name);
-      }).map(function (p) { return '<li>' + tierHtml(p.tier) + nameHtml(p) + '</li>'; }).join("");
+      }).map(function (p) {
+        var controls = '<div class="assignment-controls"><select data-assignment="team" data-id="' + esc(p.id) + '" aria-label="Move ' + esc(p.name) + ' to team">' +
+          teams.map(function (_, k) { return '<option value="' + k + '"' + (k === i ? ' selected' : '') + '>Team ' + LETTERS[k] + '</option>'; }).join('') + '</select>' +
+          '<select data-assignment="position" data-id="' + esc(p.id) + '" aria-label="' + esc(p.name) + ': position">' +
+          ['h', 'c'].map(function (pos) { return '<option value="' + pos + '"' + (FB.position(p) === pos ? ' selected' : '') + '>' + FB.POSITION_NAME[pos] + '</option>'; }).join('') + '</select></div>';
+        return '<li class="assignment-row"><div class="assignment-name">' + tierHtml(p.tier) + nameHtml(p) + '</div>' + controls + '</li>';
+      }).join("");
       return '<div class="team" style="animation-delay:' + (reduce ? 0 : i * 70) + 'ms">' +
         '<div class="team-hd"><span class="nm">Team ' + LETTERS[i] + '</span><span class="ct">' + team.length + ' players</span></div>' +
-        '<ol>' + rows + '</ol>' +
+        '<p class="team-positions">' + c.h + ' Handle &middot; ' + c.c + ' Cutter</p><ol>' + rows + '</ol>' +
         '<div class="bal"><span>' + (c.f + c.m > 0 ? c.f + "♀ " + c.m + "♂ &middot; " : "") +
         c.A + " T1 &middot; " + c.I + " T2 &middot; " + c.B + " T3" + (c.U ? " &middot; " + c.U + " U" : "") +
         '</span><span>Score <b>' + FB.score(team) + '</b></span></div></div>';
@@ -684,11 +741,11 @@
     var joined = (v.joined || []).length;
     var h = '<div class="draw-zone">';
 
-    if (!isLeader()) {
+    if (!isAdmin()) {
       if (v.drawn && v.teams) {
         return h + '<p class="eyebrow">Tonight’s teams</p><div class="teams-grid">' + teamsHtml(v.teams) + '</div></div>';
       }
-      return h + '<p class="day-msg">The supreme leader spins the disc to draw tonight’s teams. ' +
+      return h + '<p class="day-msg">An admin spins the disc to draw tonight’s teams. ' +
         'Everyone who joined gets a notification when they do.</p></div>';
     }
 
@@ -711,6 +768,7 @@
           : state.notified === 0 ? "Nobody who joined has notifications on, so tell the group chat"
           : state.notified + " device" + (state.notified === 1 ? "" : "s") + " notified") + '</p>' +
         '<div class="teams-grid">' + teamsHtml(v.teams) + '</div>' +
+        '<p class="tn-note">Late joiners get a team automatically. Use the team and position selectors to make changes.</p>' +
         '<div class="row draw-actions"><button class="btn danger" data-act="undraw" type="button"><span>Take teams back</span></button></div>';
     }
     return h + '</div>';
@@ -734,7 +792,9 @@
     } else {
       h += '<div class="day-cols">' + whoHtml("Joined", v.joined || [], false) + whoHtml("Passing", v.passed || [], true) + '</div>';
       if (isToday) h += drawZoneHtml(v);
-      else if (!past) h += '<p class="day-msg">Players can answer Join or I’ll pass on the day itself.</p>';
+      else if (!past) h += '<p class="day-msg">' + (v.canJoin
+        ? 'Tomorrow’s session is open for sign-ups in the separate card above.'
+        : 'Sign-ups open the day before this session.') + '</p>';
       if (!past) h += '<div class="row day-actions"><button class="btn danger" data-act="remove" type="button"><span>Call off this session</span></button></div>';
     }
     dayEl.innerHTML = h;
@@ -825,6 +885,30 @@
     else if (act === "n") { state.teamsWanted = +b.getAttribute("data-n"); renderDay(); }
   });
 
+  dayEl.addEventListener("change", function (e) {
+    var control = e.target.closest("[data-assignment]");
+    if (!control) return;
+    if (state.busy || state.spinning) { renderDay(); return; }
+    var body = { id: control.getAttribute("data-id") };
+    var kind = control.getAttribute("data-assignment");
+    body[kind] = kind === "team" ? Number(control.value) : control.value;
+    var date = state.day.date;
+    state.busy = true;
+    dayEl.querySelectorAll('[data-assignment]').forEach(function (select) { select.disabled = true; });
+    api("PUT", "/game/" + date + "/assignment", body).then(function (v) {
+      state.busy = false;
+      if (state.selected === date) { state.day = v; renderDay(); }
+      state.games = v.games;
+      loadTonight();
+    }, function (err) {
+      state.busy = false;
+      loadDay().then(function () {
+        var error = el("drawError");
+        if (error) error.textContent = err.message;
+      });
+    });
+  });
+
   /* "Show skill levels" - a leader's own choice, remembered on this device. */
   function applyTiers(on) {
     bandEl.classList.toggle("tiers-on", on);
@@ -853,7 +937,11 @@
     /* Past midnight, "tonight" is a different day even if nothing changed. */
     if (Date.now() - state.loadedAt > 5 * 60 * 1000) return refreshAll();
     api("GET", "/version").then(function (d) {
-      if (d.games !== state.games) { state.games = d.games; refreshAll(); }
+      if (d.games !== state.games || d.version !== state.rosterVersion) {
+        state.games = d.games;
+        state.rosterVersion = d.version;
+        refreshAll();
+      }
     }, function () { /* offline: try again next time */ });
   }
 
@@ -862,7 +950,9 @@
   function boot() {
     var leader = serverMode() && isAdmin();
     bandEl.hidden = !leader;
-    if (!serverMode()) { renderTonight(); return; }
+    if (!serverMode()) { renderTonight(); renderUpcoming(); return; }
+    state.changing = false;
+    state.changingUpcoming = false;
     loadTonight().then(function () {
       if (!leader || !state.tonight) return;
       if (!state.month) {

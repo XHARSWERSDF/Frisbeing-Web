@@ -9,6 +9,22 @@ shapes below are all the website cares about.
 
 ## Run the reference server
 
+For a local preview with test accounts, run `node server/preview.cjs --demo`
+from the website folder, then open `http://localhost:8931/__demo`. Choose
+an admin, Handle, Cutter, T2, T3 or unclassified player, or browse as a guest.
+Open the chooser in separate tabs to test several accounts at once. Each tab
+keeps its own sign-in. Today and tomorrow are scheduled, with sample
+attendance ready for a draw and an extra Handle available to join late.
+
+Demo mode uses a temporary database and local signing keys, while the API
+still checks account permissions and signatures. It does not edit
+`server/data.json`. Restarting resets the demo. Run `node server/preview.cjs`
+without `--demo` to use the regular database and Microsoft sign-in.
+
+Known genders are sourced from the GitHub roster and applied once per
+`genderRevision` in `roster-update.json`. Confirmed renames retain their
+original gender. New names remain unset; later admin edits are preserved.
+
 From the website folder — the server borrows `assets/engine.js` to match
 names the same way the sorter does. Give it the two Microsoft Entra IDs from
 the app registration (see the main `README.md`, *Microsoft sign-in*):
@@ -115,9 +131,10 @@ apart so a Join does not make every open page refetch the whole squad.
 }
 ```
 
-`tier` is the internal skill code `A`, `I` or `B` (shown in the app as T1, T2
-and T3), and is **sent only to leaders and admins**. Players and visitors get
-`{ "name", "gender" }` for each member. `teams` is `null` when no draw has been
+`tier` is the internal skill code `A`, `I`, `B` or `U` (T1, T2, T3 or
+unclassified), and is **sent only to leaders and admins**. Players and visitors get
+`{ "name", "gender", "position" }` for each member. Position is `h` (Handle)
+or `c` (Cutter). `teams` is `null` when no draw has been
 posted.
 
 ### Accounts
@@ -171,15 +188,34 @@ called off.
 |---|---|---|---|
 | `GET /schedule?month=2026-09` | anyone | — | `{ month, today, sessions: [{ date, kind, drawn, joined? }] }` — `kind` is `regular` or `extra`; `joined` counts only go to leaders and admins |
 | `POST /schedule` | leaders, admins | `{ "date", "action": "add" \| "remove" }` | `{ date, kind }`. Past days are refused. Removing a day deletes its answers and teams |
-| `GET /game?date=…` | anyone | — | That day as the asker may see it (defaults to today). Everyone: `{ date, today, isGame, kind }`. Signed in, also: `me.rsvp`, `drawn`, and `mine: { letter, members: [names] }` once teams are out. Leaders and admins, also: `joined` (with tier and gender), `passed`, and every team in `teams` |
-| `PUT /game/:date/rsvp` | signed in | `{ "status": "in" \| "out" }` | the updated view. `409` once the teams are drawn |
-| `POST /game/:date/draw` | **supreme leader only** | `{ "n": 3 }` | the updated view, plus `notifying`: how many devices are being told |
-| `DELETE /game/:date/draw` | **supreme leader only** | — | takes the teams back and reopens answers |
+| `GET /game?date=…` | anyone | — | That day as the asker may see it (defaults to today). Everyone: `{ date, today, isGame, kind, canJoin, participants: [{ name }] }`. Without a `date` query, also includes `upcoming`, tomorrow’s view. Signed in, also: `me.rsvp`, `drawn`, and `mine: { letter, members: [names] }` once teams are out. Leaders and admins, also: `joined` (with tier and gender), `passed`, and every team in `teams` |
+| `PUT /game/:date/rsvp` | signed in | `{ "status": "in" \| "out" }` | the updated view. Available on the session day and the previous calendar day in `CLUB_TZ`; earlier/finalized past dates are refused. Each date has its own answer. Joining after the draw inserts the player into a balanced existing team. Leaving removes only that player. Repeating the same answer is a no-op |
+| `POST /game/:date/draw` | leaders, admins | `{ "n": 3 }` | the updated view, plus `notifying`: how many devices are being told |
+| `DELETE /game/:date/draw` | leaders, admins | — | takes the teams back and reopens answers |
+| `PUT /game/:date/assignment` | leaders, admins | `{ "id": "player-id", "team": 0, "position": "h" }` (team or position may be omitted) | updated view. Moves one player to an existing zero-based team and/or changes their session position; `409` if no draw exists |
 
-A draw is always **Fair teams** over everyone who answered `in`: gender first,
-then tier, using `assets/engine.js`. A player not linked to the squad list
+A draw is always **Fair teams** over everyone who answered `in`: size, tier,
+gender and position, using `assets/engine.js`. A player not linked to the squad list
 plays as unclassified. The draw stores each player's id, so the team a player
 is shown is always their own.
+
+`mine` also includes `position` and `players: [{ id, name, position }]` for
+the player's own team. No tiers or other teams are included. Admin team rows
+include positions. Assignment changes increment `games`, are saved, and
+notify the affected member. The draw's `at` remains stable during late joins
+and moves; only a new draw changes it.
+
+Public `participants` contains display names only, including after a draw;
+it excludes tiers, positions, account identifiers, emails, passing lists and
+team assignments. Today and tomorrow have independent attendance. Team
+draws are restricted to the session day. Canceling a session removes its
+attendance and hides its card on the next poll.
+
+On startup, `roster-update.json` merges the newest supplied list once per
+revision into the persisted roster. Blank tiers retain existing values or
+become U for new names; positions default to Cutter. Do not omit this file
+when deploying the server. `directory.json` contains the updated email/name
+matching data locally and remains ignored by Git.
 
 ### Push notifications
 
@@ -188,7 +224,7 @@ is shown is always their own.
 | `GET /push/key` | anyone | — | `{ "publicKey" }` — the VAPID key the browser subscribes with |
 | `POST /push/subscribe` | signed in | `{ "subscription": { "endpoint", … } }` | `{ ok, devices }`. Up to 5 devices per account |
 
-When the supreme leader draws, everyone on a team except the leader is sent an
+When an admin draws, everyone on a team except the admin is sent an
 **empty** Web Push: no payload, so nothing to encrypt. The service worker
 (`sw.js`) turns it into "Teams are out! Tap to see which team you're on".
 The VAPID key pair is generated on first use and stored in the data file.

@@ -1,0 +1,510 @@
+{
+  "revision": "new-tier-2026-10-08",
+  "members": [
+    {
+      "name": "Harry Xu",
+      "tier": "A",
+      "position": "h"
+    },
+    {
+      "name": "Eva Song",
+      "tier": "A",
+      "position": "c"
+    },
+    {
+      "name": "Alisa Yan",
+      "tier": "I",
+      "position": "c"
+    },
+    {
+      "name": "Justin He",
+      "tier": "A",
+      "position": "h"
+    },
+    {
+      "name": "Yan Lee",
+      "tier": "I",
+      "position": "c"
+    },
+    {
+      "name": "Jason Xu",
+      "tier": "A",
+      "position": "h"
+    },
+    {
+      "name": "Carina Zheng",
+      "tier": "A",
+      "position": "c"
+    },
+    {
+      "name": "Leo Huo",
+      "tier": "I",
+      "position": "h"
+    },
+    {
+      "name": "Alice Guo",
+      "tier": "B",
+      "position": "c"
+    },
+    {
+      "name": "Shopping Deng",
+      "tier": "I",
+      "position": "c"
+    },
+    {
+      "name": "Abigail Zeng",
+      "tier": "B",
+      "position": "c"
+    },
+    {
+      "name": "Michael Cheng",
+      "tier": "A",
+      "position": "c"
+    },
+    {
+      "name": "Jason Luo",
+      "tier": "A",
+      "position": "c"
+    },
+    {
+      "name": "Kristy Gai",
+      "tier": "I",
+      "position": "c"
+    },
+    {
+      "name": "Kimi Shi",
+      "tier": "I",
+      "position": "c"
+    },
+    {
+      "name": "Xiang Qin",
+      "tier": "A",
+      "position": "c"
+    },
+    {
+      "name": "Paul Li",
+      "tier": "I",
+      "position": "c"
+    },
+    {
+      "name": "Cecilia Yan",
+      "tier": "I",
+      "position": "c"
+    },
+    {
+      "name": "Payson Dong",
+      "tier": "A",
+      "position": "c"
+    },
+    {
+      "name": "Anne Guo",
+      "tier": "B",
+      "position": "c"
+    },
+    {
+      "name": "Ray Zhang",
+      "tier": "I",
+      "position": "c"
+    },
+    {
+      "name": "Kathy Chen",
+      "tier": "B",
+      "position": "c"
+    },
+    {
+      "name": "Talia Zhang",
+      "tier": "B",
+      "position": "c"
+    },
+    {
+      "name": "Oscar Hu",
+      "tier": "I",
+      "position": "c"
+    },
+    {
+      "name": "Vesper Qin",
+      "tier": "I",
+      "position": "c"
+    },
+    {
+      "name": "Kevin Xiao",
+      "tier": "A",
+      "position": "c"
+    },
+    {
+      "name": "Frank Fan",
+      "tier": "B",
+      "position": "c"
+    },
+    {
+      "name": "Ingram Xie",
+      "tier": "I",
+      "position": "c"
+    },
+    {
+      "name": "Selina Xu",
+      "tier": "I",
+      "position": "c"
+    },
+    {
+      "name": "Maxim Jiang",
+      "tier": "B",
+      "position": "c"
+    },
+    {
+      "name": "Leo Zeng",
+      "tier": "B",
+      "position": "c"
+    },
+    {
+      "name": "Candy Huang",
+      "tier": "I",
+      "position": "c"
+    },
+    {
+      "name": "Ryan Li",
+      "tier": "A",
+      "position": "c"
+    },
+    {
+      "name": "Claire Yu",
+      "tier": "I",
+      "position": "c"
+    },
+    {
+      "name": "Cyrus Chang",
+      "tier": "I",
+      "position": "c"
+    },
+    {
+      "name": "Juanen Liang",
+      "tier": null,
+      "position": "c",
+      "previousName": "Andrew Liang"
+    },
+    {
+      "name": "Sissi Liu",
+      "tier": "A",
+      "position": "c"
+    },
+    {
+      "name": "Cloris Lin",
+      "tier": "I",
+      "position": "c"
+    },
+    {
+      "name": "Roxy Yang",
+      "tier": null,
+      "position": "c"
+    },
+    {
+      "name": "James Lin",
+      "tier": null,
+      "position": "c"
+    },
+    {
+      "name": "Wenbo Bin",
+      "tier": null,
+      "position": "c",
+      "previousName": "Eric Bin"
+    },
+    {
+      "name": "Daphne Xiao",
+      "tier": null,
+      "position": "c"
+    },
+    {
+      "name": "Robert Niu",
+      "tier": "A",
+      "position": "h"
+    },
+    {
+      "name": "Shawn Ai",
+      "tier": "A",
+      "position": "c"
+    },
+    {
+      "name": "Peter Chen",
+      "tier": "I",
+      "position": "c"
+    },
+    {
+      "name": "Steven Xie",
+      "tier": "B",
+      "position": "c"
+    },
+    {
+      "name": "Coco Cai",
+      "tier": "A",
+      "position": "c"
+    },
+    {
+      "name": "Kay Yang",
+      "tier": "B",
+      "position": "c"
+    },
+    {
+      "name": "Christine Mak",
+      "tier": "B",
+      "position": "c"
+    },
+    {
+      "name": "Eason Pan",
+      "tier": "I",
+      "position": "c"
+    },
+    {
+      "name": "Dora Yao",
+      "tier": "A",
+      "position": "c"
+    },
+    {
+      "name": "Eva Cao",
+      "tier": "I",
+      "position": "c"
+    },
+    {
+      "name": "Elaine Xu",
+      "tier": "B",
+      "position": "c"
+    },
+    {
+      "name": "Eli Liang",
+      "tier": "A",
+      "position": "c"
+    },
+    {
+      "name": "Ivan Wu",
+      "tier": "A",
+      "position": "c"
+    },
+    {
+      "name": "Estrella yang",
+      "tier": null,
+      "position": "c"
+    },
+    {
+      "name": "Derek Li",
+      "tier": "I",
+      "position": "c"
+    },
+    {
+      "name": "Nick Xu",
+      "tier": "I",
+      "position": "c"
+    },
+    {
+      "name": "Serina Lu",
+      "tier": null,
+      "position": "c"
+    },
+    {
+      "name": "William Li",
+      "tier": "A",
+      "position": "c"
+    },
+    {
+      "name": "Bruce Yang",
+      "tier": "I",
+      "position": "c"
+    },
+    {
+      "name": "Ivy Li",
+      "tier": "B",
+      "position": "c"
+    },
+    {
+      "name": "Roger Xing",
+      "tier": null,
+      "position": "c"
+    },
+    {
+      "name": "Evanjeline Wang",
+      "tier": null,
+      "position": "c"
+    }
+  ],
+  "genderRevision": "github-64541f9",
+  "genders": [
+    {
+      "name": "Michael Cheng",
+      "gender": "m"
+    },
+    {
+      "name": "Justin He",
+      "gender": "m"
+    },
+    {
+      "name": "Harry Xu",
+      "gender": "m"
+    },
+    {
+      "name": "Jason Xu",
+      "gender": "m"
+    },
+    {
+      "name": "Kevin Xiao",
+      "gender": "m"
+    },
+    {
+      "name": "Shawn Ai",
+      "gender": "m"
+    },
+    {
+      "name": "Cyrus Chang",
+      "gender": "m"
+    },
+    {
+      "name": "Xiang Qin",
+      "gender": "m"
+    },
+    {
+      "name": "Eli Liang",
+      "gender": "m"
+    },
+    {
+      "name": "Ingram Xie",
+      "gender": "m"
+    },
+    {
+      "name": "Jason Luo",
+      "gender": "m"
+    },
+    {
+      "name": "Jeff Liu",
+      "gender": "m"
+    },
+    {
+      "name": "Leo Huo",
+      "gender": "m"
+    },
+    {
+      "name": "Maxim Jiang",
+      "gender": "m"
+    },
+    {
+      "name": "Wenbo Bin",
+      "gender": "m"
+    },
+    {
+      "name": "Martin Xie",
+      "gender": "m"
+    },
+    {
+      "name": "Leo Hu",
+      "gender": "m"
+    },
+    {
+      "name": "Jason Qin",
+      "gender": "m"
+    },
+    {
+      "name": "Juanen Liang",
+      "gender": "m"
+    },
+    {
+      "name": "Peter Chen",
+      "gender": "m"
+    },
+    {
+      "name": "Oscar Hu",
+      "gender": "m"
+    },
+    {
+      "name": "Elsa Li",
+      "gender": "f"
+    },
+    {
+      "name": "Cecilia Yan",
+      "gender": "f"
+    },
+    {
+      "name": "Kristy Gai",
+      "gender": "f"
+    },
+    {
+      "name": "Shopping Deng",
+      "gender": "f"
+    },
+    {
+      "name": "Eva Song",
+      "gender": "f"
+    },
+    {
+      "name": "Eva Ma",
+      "gender": "f"
+    },
+    {
+      "name": "Alisa Yan",
+      "gender": "f"
+    },
+    {
+      "name": "Selina Xu",
+      "gender": "f"
+    },
+    {
+      "name": "Carina Zheng",
+      "gender": "f"
+    },
+    {
+      "name": "Cloris Lin",
+      "gender": "f"
+    },
+    {
+      "name": "Yan Li",
+      "gender": "f"
+    },
+    {
+      "name": "Abigail Zeng",
+      "gender": "f"
+    },
+    {
+      "name": "Kay Yang",
+      "gender": "f"
+    },
+    {
+      "name": "Kathy Chen",
+      "gender": "f"
+    },
+    {
+      "name": "Evanjeline Wang",
+      "gender": "f"
+    },
+    {
+      "name": "Alice Guo",
+      "gender": "f"
+    },
+    {
+      "name": "Talia Zheng",
+      "gender": "f"
+    },
+    {
+      "name": "Alinda He",
+      "gender": "f"
+    },
+    {
+      "name": "Hedy Chen",
+      "gender": "f"
+    },
+    {
+      "name": "Sissi Li",
+      "gender": "f"
+    },
+    {
+      "name": "Dora Yao",
+      "gender": "f"
+    },
+    {
+      "name": "Madin Xie",
+      "gender": "f"
+    },
+    {
+      "name": "Payson Dong",
+      "gender": "m"
+    },
+    {
+      "name": "Eason Pan",
+      "gender": "m"
+    }
+  ]
+}

@@ -2,226 +2,457 @@
   {
     "name": "Michael Cheng",
     "tier": "A",
-    "gender": "m"
+    "gender": "m",
+    "position": "c"
   },
   {
     "name": "Justin He",
     "tier": "A",
-    "gender": "m"
+    "gender": "m",
+    "position": "h"
   },
   {
     "name": "Harry Xu",
     "tier": "A",
-    "gender": "m"
+    "gender": "m",
+    "position": "h"
   },
   {
     "name": "Jason Xu",
     "tier": "A",
-    "gender": "m"
+    "gender": "m",
+    "position": "h"
   },
   {
     "name": "Kevin Xiao",
-    "tier": "I",
-    "gender": "m"
+    "tier": "A",
+    "gender": "m",
+    "position": "c"
   },
   {
     "name": "Shawn Ai",
-    "tier": "I",
-    "gender": "m"
+    "tier": "A",
+    "gender": "m",
+    "position": "c"
   },
   {
     "name": "Cyrus Chang",
     "tier": "I",
-    "gender": "m"
+    "gender": "m",
+    "position": "c"
   },
   {
     "name": "Xiang Qin",
-    "tier": "I",
-    "gender": "m"
+    "tier": "A",
+    "gender": "m",
+    "position": "c"
   },
   {
     "name": "Eli Liang",
-    "tier": "I",
-    "gender": "m"
+    "tier": "A",
+    "gender": "m",
+    "position": "c"
   },
   {
     "name": "Ingram Xie",
     "tier": "I",
-    "gender": "m"
+    "gender": "m",
+    "position": "c"
   },
   {
     "name": "Jason Luo",
-    "tier": "I",
-    "gender": "m"
+    "tier": "A",
+    "gender": "m",
+    "position": "c"
   },
   {
     "name": "Jeff Liu",
     "tier": "I",
-    "gender": "m"
+    "gender": "m",
+    "position": "c"
   },
   {
     "name": "Leo Huo",
     "tier": "I",
-    "gender": "m"
+    "gender": "m",
+    "position": "h"
   },
   {
     "name": "Maxim Jiang",
     "tier": "B",
-    "gender": "m"
+    "gender": "m",
+    "position": "c"
   },
   {
-    "name": "Eric Bin",
+    "name": "Wenbo Bin",
     "tier": "B",
-    "gender": "m"
+    "gender": "m",
+    "position": "c"
   },
   {
     "name": "Martin Xie",
     "tier": "B",
-    "gender": "m"
+    "gender": "m",
+    "position": "c"
   },
   {
     "name": "Leo Hu",
     "tier": "B",
-    "gender": "m"
+    "gender": "m",
+    "position": "c"
   },
   {
     "name": "Jason Qin",
     "tier": "B",
-    "gender": "m"
+    "gender": "m",
+    "position": "c"
   },
   {
-    "name": "Andrew Liang",
+    "name": "Juanen Liang",
     "tier": "B",
-    "gender": "m"
+    "gender": "m",
+    "position": "c"
   },
   {
     "name": "Peter Chen",
-    "tier": "B",
-    "gender": "m"
+    "tier": "I",
+    "gender": "m",
+    "position": "c"
   },
   {
     "name": "Oscar Hu",
-    "tier": "B",
-    "gender": "m"
+    "tier": "I",
+    "gender": "m",
+    "position": "c"
   },
   {
     "name": "Elsa Li",
     "tier": "A",
-    "gender": "f"
+    "gender": "f",
+    "position": "c"
   },
   {
     "name": "Cecilia Yan",
     "tier": "I",
-    "gender": "f"
+    "gender": "f",
+    "position": "c"
   },
   {
     "name": "Kristy Gai",
     "tier": "I",
-    "gender": "f"
+    "gender": "f",
+    "position": "c"
   },
   {
     "name": "Shopping Deng",
     "tier": "I",
-    "gender": "f"
+    "gender": "f",
+    "position": "c"
   },
   {
     "name": "Eva Song",
-    "tier": "I",
-    "gender": "f"
+    "tier": "A",
+    "gender": "f",
+    "position": "c"
   },
   {
     "name": "Eva Ma",
     "tier": "I",
-    "gender": "f"
+    "gender": "f",
+    "position": "c"
   },
   {
     "name": "Alisa Yan",
     "tier": "I",
-    "gender": "f"
+    "gender": "f",
+    "position": "c"
   },
   {
     "name": "Selina Xu",
     "tier": "I",
-    "gender": "f"
+    "gender": "f",
+    "position": "c"
   },
   {
     "name": "Carina Zheng",
-    "tier": "I",
-    "gender": "f"
+    "tier": "A",
+    "gender": "f",
+    "position": "c"
   },
   {
     "name": "Cloris Lin",
-    "tier": "B",
-    "gender": "f"
+    "tier": "I",
+    "gender": "f",
+    "position": "c"
   },
   {
     "name": "Yan Li",
     "tier": "B",
-    "gender": "f"
+    "gender": "f",
+    "position": "c"
   },
   {
     "name": "Abigail Zeng",
     "tier": "B",
-    "gender": "f"
+    "gender": "f",
+    "position": "c"
   },
   {
     "name": "Kay Yang",
     "tier": "B",
-    "gender": "f"
+    "gender": "f",
+    "position": "c"
   },
   {
     "name": "Kathy Chen",
     "tier": "B",
-    "gender": "f"
+    "gender": "f",
+    "position": "c"
   },
   {
     "name": "Evanjeline Wang",
     "tier": "B",
-    "gender": "f"
+    "gender": "f",
+    "position": "c"
   },
   {
     "name": "Alice Guo",
     "tier": "B",
-    "gender": "f"
+    "gender": "f",
+    "position": "c"
   },
   {
     "name": "Talia Zheng",
     "tier": "B",
-    "gender": "f"
+    "gender": "f",
+    "position": "c"
   },
   {
     "name": "Alinda He",
     "tier": "B",
-    "gender": "f"
+    "gender": "f",
+    "position": "c"
   },
   {
     "name": "Hedy Chen",
     "tier": "B",
-    "gender": "f"
+    "gender": "f",
+    "position": "c"
   },
   {
     "name": "Sissi Li",
     "tier": "B",
-    "gender": "f"
+    "gender": "f",
+    "position": "c"
   },
   {
     "name": "Dora Yao",
-    "tier": "B",
-    "gender": "f"
+    "tier": "A",
+    "gender": "f",
+    "position": "c"
   },
   {
     "name": "Madin Xie",
     "tier": "B",
-    "gender": "f"
+    "gender": "f",
+    "position": "c"
   },
   {
     "name": "Payson Dong",
-    "tier": "I",
-    "gender": "m"
+    "tier": "A",
+    "gender": "m",
+    "position": "c"
   },
   {
     "name": "Eason Pan",
     "tier": "I",
-    "gender": "m"
+    "gender": "m",
+    "position": "c"
+  },
+  {
+    "name": "Yan Lee",
+    "tier": "I",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "Kimi Shi",
+    "tier": "I",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "Paul Li",
+    "tier": "I",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "Anne Guo",
+    "tier": "B",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "Ray Zhang",
+    "tier": "I",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "Talia Zhang",
+    "tier": "B",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "Vesper Qin",
+    "tier": "I",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "Frank Fan",
+    "tier": "B",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "Leo Zeng",
+    "tier": "B",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "Candy Huang",
+    "tier": "I",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "Ryan Li",
+    "tier": "A",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "Claire Yu",
+    "tier": "I",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "Sissi Liu",
+    "tier": "A",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "Roxy Yang",
+    "tier": "U",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "James Lin",
+    "tier": "U",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "Daphne Xiao",
+    "tier": "U",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "Robert Niu",
+    "tier": "A",
+    "gender": "",
+    "position": "h"
+  },
+  {
+    "name": "Steven Xie",
+    "tier": "B",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "Coco Cai",
+    "tier": "A",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "Christine Mak",
+    "tier": "B",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "Eva Cao",
+    "tier": "I",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "Elaine Xu",
+    "tier": "B",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "Ivan Wu",
+    "tier": "A",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "Estrella yang",
+    "tier": "U",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "Derek Li",
+    "tier": "I",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "Nick Xu",
+    "tier": "I",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "Serina Lu",
+    "tier": "U",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "William Li",
+    "tier": "A",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "Bruce Yang",
+    "tier": "I",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "Ivy Li",
+    "tier": "B",
+    "gender": "",
+    "position": "c"
+  },
+  {
+    "name": "Roger Xing",
+    "tier": "U",
+    "gender": "",
+    "position": "c"
   }
 ]
