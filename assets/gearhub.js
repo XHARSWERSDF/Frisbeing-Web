@@ -79,6 +79,36 @@
       var details = document.createElement("span");
       details.textContent = money(product.price) + " each ×" + qty;
       description.append(name, details);
+      var controls = document.createElement("div");
+      controls.className = "gearhub-cart-controls";
+      function cartButton(label, action, disabled) {
+        var button = document.createElement("button");
+        button.type = "button";
+        button.textContent = label;
+        button.dataset.productId = product.id;
+        button.dataset.cartAction = action;
+        button.disabled = !!disabled;
+        button.setAttribute("aria-label", (action === "remove" ? "Remove " : action === "down" ? "Decrease quantity of " : "Increase quantity of ") + product.name);
+        button.addEventListener("click", function () {
+          var updated = readCart();
+          var current = Math.max(1, Math.floor(Number(updated[product.id]) || 1));
+          if (action === "remove") delete updated[product.id];
+          else updated[product.id] = action === "down" ? Math.max(1, current - 1) : Math.min(maxQuantity, current + 1);
+          saveCart(updated);
+          updateCart();
+          var buttons = Array.from(document.querySelectorAll("#gearhubCartItems button"));
+          var next = buttons.find(function (item) { return item.dataset.productId === product.id && item.dataset.cartAction === action && !item.disabled; }) ||
+            buttons.find(function (item) { return item.dataset.productId === product.id && !item.disabled; }) ||
+            buttons.find(function (item) { return !item.disabled; }) || document.getElementById("closeGearhubCart");
+          next.focus({ preventScroll: true });
+        });
+        return button;
+      }
+      var amount = document.createElement("output");
+      amount.textContent = String(qty);
+      amount.setAttribute("aria-label", "Quantity of " + product.name);
+      controls.append(cartButton("−", "down", qty <= 1), amount, cartButton("+", "up", qty >= maxQuantity), cartButton("Remove", "remove"));
+      description.appendChild(controls);
       var price = document.createElement("strong");
       price.textContent = money(lineTotal);
       row.append(description, price);

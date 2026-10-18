@@ -1435,6 +1435,12 @@ body.is-public .head.public-only { display: block; }
 .gearhub-cart-items { border-block: 1px solid var(--line); }
 .gearhub-cart-item { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 0; color: var(--chalk); }
 .gearhub-cart-item > div { display: grid; gap: 4px; }
+.gearhub-cart-controls { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.gearhub-cart-controls button { display: grid; place-items: center; min-width: 32px; height: 32px; padding: 0 8px; border: 1px solid var(--line); background: transparent; color: var(--chalk); font: 500 16px/1 var(--f-body); cursor: pointer; }
+.gearhub-cart-controls button[data-cart-action="remove"] { margin-left: 6px; font-size: 12px; }
+.gearhub-cart-controls button:disabled { opacity: .4; cursor: default; }
+.gearhub-cart-controls button:focus-visible { outline: 2px solid var(--chalk); outline-offset: 2px; }
+.gearhub-cart-controls output { min-width: 24px; text-align: center; font-size: 14px; font-variant-numeric: tabular-nums; }
 .gearhub-cart-item > strong, .gearhub-cart-total strong { color: var(--chalk); font: 700 18px/1.2 var(--f-body); }
 .gearhub-cart-item > div span, .gearhub-cart-empty { color: var(--mist); font-size: 13px; }
 .gearhub-cart-empty { margin: 0; padding: 18px 0; }
