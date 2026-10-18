@@ -6,7 +6,10 @@
     try { localStorage.removeItem(KEY); localStorage.removeItem(ROLE); } catch (ignore) { /* Storage may be disabled. */ }
     return;
   }
-  document.querySelectorAll(".preview-actions").forEach(function (panel) { panel.hidden = false; });
+  var signedOutPanel = document.getElementById("signedOut");
+  if (signedOutPanel) {
+    signedOutPanel.insertAdjacentHTML("afterbegin", "<div class=\"preview-actions\">\n          <p class=\"hint\">Preview without signing in</p>\n          <div class=\"row\"><button class=\"btn\" data-preview-role=\"player\" type=\"button\"><span>Member</span></button><button class=\"btn\" data-preview-role=\"admin\" type=\"button\"><span>Admin</span></button><button class=\"btn\" data-preview-role=\"leader\" type=\"button\"><span>Admin Manager</span></button></div>\n          <p class=\"hint\">Preview interactions run only in this browser and do not change the live roster or sessions.</p>\n        </div>");
+  }
   var labels = { player: "Member", admin: "Admin", leader: "Admin Manager" };
   var emailNames = { player: "member", admin: "admin", leader: "admin-manager" };
   var demoMembers = { player: "Demo Alex", admin: "Demo Jamie", leader: "Demo Taylor" };
