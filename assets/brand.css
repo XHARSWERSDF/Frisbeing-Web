@@ -1310,7 +1310,7 @@ body.is-public .head.public-only { display: block; }
 @media (max-width: 480px) {
   .nav { gap: 6px; }
   .nav-member-tools { gap: 4px; }
-  #damask { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(6, minmax(0, 1fr)); }
+  #damask { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(var(--photo-wall-rows, 6), minmax(0, 1fr)); }
   .nav .mark-copy {
     position: absolute; width: 1px; height: 1px;
     overflow: hidden; clip-path: inset(50%); white-space: nowrap;
@@ -1318,7 +1318,12 @@ body.is-public .head.public-only { display: block; }
   .nav a.lnk { letter-spacing: .12em; }
 }
 @media (min-width: 481px) and (max-width: 900px) {
-  #damask { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(4, minmax(0, 1fr)); }
+  #damask { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(var(--photo-wall-rows, 4), minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  #damask img { min-width: 0; min-height: 0; object-fit: contain; object-position: center; background: var(--ink); }
+  .gearhub-product-art .gearhub-product-image, .gearhub-dialog-art .gearhub-dialog-product-image,
+  .gearhub-dialog-art .gearhub-disc-image, .gearhub-upload-preview-wrap .gearhub-upload-preview { object-fit: contain; }
 }
 @media (max-width: 340px) {
   .nav { gap: 4px; }

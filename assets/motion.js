@@ -24,14 +24,28 @@
     "11-night-trio.jpg", "12-field-huddle.jpg", "13-day-squad.jpg", "14-night-squad.jpg"
   ];
   if (hero) {
-    backgroundPhotos.forEach(function (name) {
-      var img = document.createElement("img");
-      img.src = "assets/photos/" + name;
-      img.alt = "";
-      img.setAttribute("aria-hidden", "true");
-      img.decoding = "async";
-      damask.appendChild(img);
-    });
+    function fitPhotoWall() {
+      var width = damask.clientWidth || window.innerWidth;
+      var height = damask.clientHeight || window.innerHeight;
+      var compact = width <= 900;
+      var columns = compact ? (width <= 480 ? 2 : 3) : 4;
+      var tileWidth = (width - 12 - (columns - 1) * 6) / columns;
+      var rows = compact ? Math.max(1, Math.round((height - 6) / (tileWidth * .75 + 6))) : 3;
+      damask.style.setProperty("--photo-wall-rows", String(rows));
+      var count = columns * rows;
+      while (damask.children.length > count) damask.lastElementChild.remove();
+      while (damask.children.length < count) {
+        var img = document.createElement("img");
+        img.src = "assets/photos/" + backgroundPhotos[damask.children.length % backgroundPhotos.length];
+        img.alt = "";
+        img.setAttribute("aria-hidden", "true");
+        img.decoding = "async";
+        damask.appendChild(img);
+      }
+    }
+    fitPhotoWall();
+    window.addEventListener("resize", fitPhotoWall);
+    if (window.ResizeObserver) new ResizeObserver(fitPhotoWall).observe(damask);
   } else {
     document.body.classList.add("utility-brand-background");
   }
