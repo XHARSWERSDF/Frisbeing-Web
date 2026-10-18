@@ -12,7 +12,7 @@
   var panel = el("accountsPanel");
   if (!panel) return;
 
-  var listEl = el("accountList"), countEl = el("accountsCount"), report = el("accountsReport");
+  var listEl = el("accountList"), report = el("accountsReport");
   var accounts = [];
   var rosterNames = "";
 
@@ -56,10 +56,6 @@
     var roster = FBStore.getRoster().slice().sort(function (x, y) { return x.name.localeCompare(y.name); });
     var owner = {};
     accounts.forEach(function (a) { if (a.member) owner[FB.norm(a.member)] = a.id; });
-
-    var unmatched = accounts.filter(function (a) { return !a.member; }).length;
-    countEl.textContent = accounts.length + (accounts.length === 1 ? " account" : " accounts") +
-      (unmatched ? " · " + unmatched + " not linked" : "");
 
     listEl.innerHTML = "";
     if (!accounts.length) {

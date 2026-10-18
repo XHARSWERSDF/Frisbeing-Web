@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My Profile &middot; FRISBEING UF</title>
+<meta name="theme-color" content="#0E2018">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="assets/monogram.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap">
+<link rel="stylesheet" href="assets/brand.css?v=165">
+</head>
+<body>
+<div class="wrap">
+  <nav class="nav">
+    <div class="mark"><img src="assets/monogram.png" alt=""><div class="mark-copy"><span>FRISBEING UF</span><small class="mark-est">Est. 2022</small></div></div>
+    <a class="lnk" href="index.html">Home</a>
+    <a class="lnk" id="gameNav" href="sort.html" hidden>Game</a>
+    <a class="lnk" id="membershipNav" href="roster.html">Member</a>
+    <a class="lnk" id="accountNav" href="admin.html">Account</a><div class="nav-member-tools" id="memberTools" hidden><a class="lnk" href="gearhub.html">GearHub</a></div>
+  </nav>
+  <section class="band-field profile-page">
+    <div class="inner" style="max-width:720px">
+      <div class="head"><h2 class="display">My Profile</h2></div>
+      <div class="panel profile-panel">
+        <p class="profile-name" id="profileName"></p>
+        <p class="hint" id="profileEmail"></p>
+        <p class="hint" id="profileMember"></p>
+        <button class="btn spacer" id="profileSignOut" type="button"><span>Sign out</span></button>
+      </div>
+    </div>
+  </section>
+</div>
+<script src="assets/server-config.js"></script>
+<script src="assets/auth-config.js"></script>
+<script src="assets/auth.js?v=3"></script>
+<script src="assets/preview-mode.js?v=16"></script>
+<script src="assets/navigation.js?v=8"></script>
+<script src="assets/motion.js?v=102"></script>
+<script src="assets/pwa.js"></script>
+<script src="assets/profile.js?v=3"></script>
+</body>
+</html>

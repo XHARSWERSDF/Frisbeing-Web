@@ -17,7 +17,7 @@
      same as T3 and go wherever T3 goes, but are dealt as their own group so
      every team gets an even share of the unknowns. */
   FB.TIERS = ["A", "I", "B", "U"];
-  FB.TIER_NAME = { A: "T1", I: "T2", B: "T3", U: "U" };
+  FB.TIER_NAME = { A: "T1", I: "T2", B: "T3", U: "T4" };
   FB.WEIGHT = { A: 3, I: 2, B: 1, U: 1 };
   FB.POSITION_NAME = { h: "Handle", c: "Cutter" };
   FB.parsePosition = function (raw) {
@@ -88,7 +88,7 @@
     A: ["t1", "tier1", "tierone", "advanced", "advance", "adv", "a", "high", "expert", "elite", "高级", "高"],
     I: ["t2", "tier2", "tiertwo", "intermediate", "intermediates", "inter", "int", "i", "mid", "middle", "medium", "中级", "中"],
     B: ["t3", "tier3", "tierthree", "beginner", "beginners", "begin", "beg", "b", "new", "novice", "rookie", "starter", "初级", "初", "新手"],
-    U: ["u", "unclassified"]
+    U: ["t4", "tier4", "tierfour", "u", "unclassified"]
   };
 
   FB.parseTier = function (raw) {

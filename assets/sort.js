@@ -37,7 +37,7 @@
   var REVEAL_KEY = "frisbeing.revealed.v1";
   var TIERS_KEY = "frisbeing.showTiers.v1";
 
-  var DISC = '<span class="disc-inner"><img src="assets/monogram.png" alt=""></span><span class="disc-ring"></span>';
+  var DISC = '<span class="disc-inner"><span class="disc-mark" aria-hidden="true"></span></span><span class="disc-ring"></span>';
   var BARS = "<i></i><i></i><i></i><i></i><i></i><i></i>";
 
   var state = {
@@ -60,13 +60,44 @@
     spinning: false     /* a throw is in the air - do not redraw under it */
   };
   var push = { subscribed: false, key: null };
+  var simulateBeforeStart = false;
+  var simulateAfterStart = false;
+
+  /* Local visual preview only. Never expose the switch on the live domain. */
+  if (location.protocol === "file:" || ["localhost", "127.0.0.1", "::1"].indexOf(location.hostname) >= 0) {
+    var timePreviews = document.createElement("div");
+    timePreviews.className = "dev-time-controls";
+    [
+      { label: "Simulate before 20:10", get: function () { return simulateBeforeStart; }, set: function (v) { simulateBeforeStart = v; simulateAfterStart = false; } },
+      { label: "Simulate after 20:10", get: function () { return simulateAfterStart; }, set: function (v) { simulateAfterStart = v; simulateBeforeStart = false; } }
+    ].forEach(function (preview) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "dev-time-toggle";
+      button.setAttribute("aria-pressed", "false");
+      button.textContent = preview.label;
+      button.addEventListener("click", function () {
+        preview.set(!preview.get());
+        timePreviews.querySelectorAll("button").forEach(function (item, index) {
+          var active = index === 0 ? simulateBeforeStart : simulateAfterStart;
+          item.setAttribute("aria-pressed", String(active));
+          item.textContent = active ? (index === 0 ? "Exit before preview" : "Exit after preview") :
+            (index === 0 ? "Simulate before 20:10" : "Simulate after 20:10");
+        });
+        renderTonight();
+      });
+      timePreviews.appendChild(button);
+    });
+    document.body.appendChild(timePreviews);
+  }
 
   /* ------------------------------------------------------------ basics -- */
 
-  function serverMode() { return !!(SRV.apiBase && String(SRV.apiBase).trim()); }
-  function signedIn() { return !!(window.FBAuth && FBAuth.user()); }
+  function serverMode() { return !isPreview() && !!(SRV.apiBase && String(SRV.apiBase).trim()); }
+  function isPreview() { return !!(window.FBPreview && FBPreview.active()); }
+  function signedIn() { return isPreview() || !!(window.FBAuth && FBAuth.user()); }
   function isAdmin() { return !!(window.FBAuth && FBAuth.isAdmin()); }
-  function myName() { var u = window.FBAuth && FBAuth.user(); return u ? u.name : ""; }
+  function myName() { var u = window.FBAuth && FBAuth.user(); return u ? u.name : isPreview() ? "Preview Member" : ""; }
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
@@ -88,6 +119,7 @@
   function writePref(key, v) { try { window.localStorage.setItem(key, v); } catch (e) { /* private mode */ } }
 
   function api(method, path, body) {
+    if (isPreview()) return FBPreview.request(method, path, body);
     var headers = { "Accept": "application/json" };
     var token = window.FBAuth && FBAuth.token();
     if (token) headers.Authorization = "Bearer " + token;
@@ -114,7 +146,7 @@
   function paint(html) { tonightEl.innerHTML = html; }
 
   function noGameHtml() {
-    return '<h2 class="tn-big">No Current Scheduled Games For Tonight</h2>' +
+    return '<h2 class="tn-big">No session for tonight</h2>' +
       '<p class="tn-small">' + (state.upcoming && state.upcoming.isGame
         ? 'Tomorrow’s session is open for sign-ups below.' : 'Stay tuned next day!') + '</p>' +
       '<div class="tn-discs" aria-hidden="true"><span class="emoji">🥏</span>' +
@@ -124,9 +156,26 @@
   function gameHtml() {
     return '<h2 class="tn-big tn-fire"><span class="emoji">🔥</span> TONIGHT ' +
       '<span class="emoji">🔥</span></h2>' +
-      '<p class="tn-game">We shall have a GAME OF <span class="hot">“激情' +
-      '<span class="emoji">❤️‍🔥</span>”</span> <span class="word">Frisbee</span></p>';
+      '<p class="tn-game">Game Scheduled 20:00 @sportsfield</p>';
   }
+
+  function sessionStarted(t) {
+    if (simulateBeforeStart) return false;
+    if (simulateAfterStart) return true;
+    if (!t || !t.isGame || t.date !== t.today) return false;
+    if (!t.canJoin) return true;
+    var now = new Date();
+    var zone = t.tz || "Asia/Shanghai";
+    var today = new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+    if (today > t.date) return true;
+    if (today < t.date) return false;
+    var parts = new Intl.DateTimeFormat("en-GB", { timeZone: zone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(now);
+    var hour = Number(parts.find(function (part) { return part.type === "hour"; }).value);
+    var minute = Number(parts.find(function (part) { return part.type === "minute"; }).value);
+    return hour * 60 + minute >= 20 * 60 + 10;
+  }
+
+  function startedHtml() { return '<h2 class="tn-big tn-answer">Session Started</h2>'; }
 
   function choiceHtml(tomorrow) {
     return '<div class="tn-actions">' +
@@ -143,32 +192,36 @@
       }).join('') + '</ul>' : '<p class="tn-note">Nobody has joined yet. Be the first!</p>');
   }
 
+  function changeAnswerHtml() {
+    return '<div class="tn-actions"><button class="btn session-secondary" data-act="change" type="button"><span>Change my answer</span></button></div>';
+  }
+
   function renderUpcoming() {
     var v = state.upcoming;
-    upcomingBandEl.hidden = !serverMode() || !v || !v.isGame;
+    upcomingBandEl.hidden = (!serverMode() && !isPreview()) || !v || !v.isGame;
     if (upcomingBandEl.hidden) { upcomingEl.innerHTML = ''; return; }
-    var h = '<p class="eyebrow">Tomorrow’s session</p><h2 class="tn-big tn-answer">' + esc(longDate(v.date)) + '</h2>' +
-      '<p class="tn-small">Sign up a day ahead.</p>';
+    var h = '<h2 class="tn-big tn-answer">' + esc(longDate(v.date)) + '</h2>';
+    if (!v.signedIn || state.changingUpcoming || !v.me || !v.me.rsvp) h += '<p class="tn-small">Sign up a day ahead.</p>';
     if (!v.signedIn) h += signInHtml();
     else if (state.changingUpcoming || !v.me || !v.me.rsvp) h += choiceHtml(true);
     else {
-      h += '<p class="upcoming-answer">' + (v.me.rsvp === 'in' ? 'You’re in for tomorrow!' : 'You’re passing on tomorrow’s session.') + '</p>' +
-        '<button class="tn-link" data-act="change" type="button">Change tomorrow’s answer</button><p class="tn-error" id="upcomingError"></p>';
+      h += '<p class="upcoming-answer">' + (v.me.rsvp === 'in' ? 'Session Joined' : 'Passed') + '</p>' +
+        changeAnswerHtml() + '<p class="tn-error" id="upcomingError"></p>';
     }
-    upcomingEl.innerHTML = h + '<div class="session-attendance">' + participantsHtml(v, 'Who’s joining tomorrow') + '</div>';
+    upcomingEl.innerHTML = h + '<div class="session-attendance">' + participantsHtml(v, 'Player List') + '</div>';
   }
 
   function inHtml() {
-    return '<h2 class="tn-big tn-answer">You’re In!</h2>' +
+    return '<h2 class="tn-big tn-answer">You’re in!</h2>' +
       '<p class="tn-small">Stay tuned for the team selection!</p>' +
       bellHtml() +
-      '<button class="tn-link" data-act="change" type="button">Change my answer</button>' +
+      changeAnswerHtml() +
       '<p class="tn-error" id="tnError"></p>';
   }
 
   function outHtml(canChange) {
-    return '<h2 class="tn-big tn-answer">It’s alr, Cya another day!</h2>' +
-      (canChange ? '<button class="tn-link" data-act="change" type="button">Change my answer</button>' : '') +
+    return '<h2 class="tn-big tn-answer">Passed</h2>' +
+      (canChange ? changeAnswerHtml() : '') +
       '<p class="tn-error" id="tnError"></p>';
   }
 
@@ -192,12 +245,11 @@
     return '<h2 class="reveal-head"><span class="see-your">You are on</span> ' +
       '<span class="see-team">Team</span> ' +
       '<span class="team-letter">' + esc(mine.letter) + '</span></h2>' +
-      '<p class="eyebrow mates-hd">Your role: ' + FB.POSITION_NAME[mine.position || "c"] + '</p>' +
-      '<p class="eyebrow dim">Your team &middot; ' + names.length + ' players</p>' +
       '<ul class="mates">' + names.map(function (p, i) {
         return '<li' + (p.name === me ? ' class="me"' : '') + ' style="animation-delay:' +
-          (reduce ? 0 : 750 + i * 60) + 'ms"><span>' + esc(p.name) + ' <small>' + FB.POSITION_NAME[FB.position(p)] + '</small></span></li>';
-      }).join("") + '</ul><button class="tn-link" data-act="pass" type="button">Leave this session</button><p class="tn-error" id="tnError"></p>';
+          (reduce ? 0 : 750 + i * 60) + 'ms"><span>' + esc(p.name) + '</span></li>';
+      }).join("") + '</ul>' + (sessionStarted(state.tonight) ? '' : '<button class="tn-link" data-act="pass" type="button">Leave this session</button>') +
+      '<p class="tn-error" id="tnError"></p>';
   }
 
   function signInHtml() {
@@ -208,19 +260,26 @@
   function renderTonight() {
     if (state.spinning) return;
     var t = state.tonight;
-    todayParticipantsEl.hidden = !serverMode() || !t || !t.isGame;
-    todayParticipantsEl.innerHTML = todayParticipantsEl.hidden ? '' : participantsHtml(t, 'Who’s joining tonight');
-    if (!serverMode()) {
+    if (simulateBeforeStart && t && t.isGame) t = Object.assign({}, t, { canJoin: true });
+    state.sessionStartedShown = sessionStarted(t);
+    todayParticipantsEl.hidden = (!serverMode() && !isPreview()) || !t || !t.isGame;
+    todayParticipantsEl.innerHTML = todayParticipantsEl.hidden ? '' : participantsHtml(t, 'Player List');
+    if (simulateAfterStart && (!t || !t.isGame)) return paint(startedHtml());
+    if (!serverMode() && !isPreview()) {
       return paint('<p class="eyebrow dim tn-eyebrow">Tonight</p>' +
         '<h2 class="tn-big">Sessions are switched off</h2>' +
         '<p class="tn-small">Game nights need the club server, which this copy of the site is running without.</p>');
     }
     if (!t) return paint('<p class="tn-small">Checking tonight&hellip;</p>');
     if (!t.isGame) return paint(noGameHtml());
+    if (state.sessionStartedShown) {
+      if (t.drawn && t.mine) return paint(revealedAlready(t) ? revealHtml(t.mine) : seeYourTeamHtml());
+      return paint(startedHtml());
+    }
     if (!t.signedIn) return paint(gameHtml() + signInHtml());
 
     if (t.drawn) {
-      if (!t.mine) return paint(gameHtml() + '<p class="tn-note">Teams are out. You can still join and get a team straight away.</p>' + choiceHtml());
+      if (!t.mine) return paint(gameHtml() + choiceHtml());
       return paint(revealedAlready(t) ? revealHtml(t.mine) : seeYourTeamHtml());
     }
     if (state.changing || !t.me || !t.me.rsvp) return paint(gameHtml() + choiceHtml());
@@ -273,11 +332,11 @@
 
   function answer(status, upcoming) {
     var t = upcoming ? state.upcoming : state.tonight;
-    if (!t || !t.canJoin) return;
+    if (!t || !t.canJoin || (!upcoming && sessionStarted(t))) return;
     ++state.loadRequest;   /* discard any read started before this answer */
     /* Asking for notification permission has to start inside the tap itself,
        so it is kicked off before the answer goes to the server. */
-    var asking = status === "in" ? turnOnPush(true) : null;
+    var asking = status === "in" && !isPreview() ? turnOnPush(true) : null;
     state.busy = true;
     api("PUT", "/game/" + t.date + "/rsvp", { status: status }).then(function (v) {
       state.busy = false;
@@ -524,7 +583,7 @@
     if (Notification.permission === "granted" && push.subscribed) {
       return '<p class="tn-note">🔔 <b>Notifications are on.</b> This device will buzz when the teams are out.</p>';
     }
-    return '<div class="tn-actions" style="margin-top:26px"><button class="btn" data-act="notify" type="button">' +
+    return '<div class="tn-actions notify-actions"><button class="btn session-secondary" data-act="notify" type="button">' +
       '<span>🔔 Notify me when teams are out</span></button></div>';
   }
 
@@ -682,7 +741,7 @@
     return '<span>' + esc(p.name) + real + '</span>';
   }
   function tierHtml(t) {
-    var name = t === "U" ? "Unclassified" : FB.TIER_NAME[t];
+    var name = FB.TIER_NAME[t];
     return '<span class="tier ' + esc(t) + '" title="' + esc(name) + '">' + esc(FB.TIER_NAME[t] || t) + '</span>';
   }
 
@@ -700,34 +759,40 @@
   }
 
   function teamsHtml(teams) {
-    return teams.map(function (team, i) {
+    return (Array.isArray(teams) ? teams : []).map(function (team, i) {
+      team = Array.isArray(team) ? team.filter(function (player) { return player && typeof player === "object"; }) : [];
       var c = FB.counts(team);
       var rows = team.slice().sort(function (a, b) {
         return FB.TIERS.indexOf(a.tier) - FB.TIERS.indexOf(b.tier) || a.name.localeCompare(b.name);
       }).map(function (p) {
-        var controls = '<div class="assignment-controls"><select data-assignment="team" data-id="' + esc(p.id) + '" aria-label="Move ' + esc(p.name) + ' to team">' +
-          teams.map(function (_, k) { return '<option value="' + k + '"' + (k === i ? ' selected' : '') + '>Team ' + LETTERS[k] + '</option>'; }).join('') + '</select>' +
-          '<select data-assignment="position" data-id="' + esc(p.id) + '" aria-label="' + esc(p.name) + ': position">' +
-          ['h', 'c'].map(function (pos) { return '<option value="' + pos + '"' + (FB.position(p) === pos ? ' selected' : '') + '>' + FB.POSITION_NAME[pos] + '</option>'; }).join('') + '</select></div>';
-        return '<li class="assignment-row"><div class="assignment-name">' + tierHtml(p.tier) + nameHtml(p) + '</div>' + controls + '</li>';
+        var controls = isAdmin()
+          ? '<div class="assignment-controls" role="group" aria-label="' + esc(p.name) + ': position">' +
+            ['h', 'c'].map(function (pos) {
+              return '<button type="button" data-assignment="position" data-id="' + esc(p.id) + '" data-position="' + pos +
+                '" aria-label="' + esc(p.name) + ': ' + FB.POSITION_NAME[pos] + '" aria-pressed="' + (FB.position(p) === pos) +
+                '"><span>' + FB.POSITION_NAME[pos] + '</span></button>';
+            }).join('') + '</div>'
+          : '';
+        return '<li class="assignment-row"' + (isAdmin() ? ' draggable="true" data-player-id="' + esc(p.id) + '" data-source-team="' + i + '" title="Drag to another team"' : '') +
+          '><div class="assignment-name">' + tierHtml(p.tier) + nameHtml(p) + '</div>' + controls + '</li>';
       }).join("");
-      return '<div class="team" style="animation-delay:' + (reduce ? 0 : i * 70) + 'ms">' +
-        '<div class="team-hd"><span class="nm">Team ' + LETTERS[i] + '</span><span class="ct">' + team.length + ' players</span></div>' +
-        '<p class="team-positions">' + c.h + ' Handle &middot; ' + c.c + ' Cutter</p><ol>' + rows + '</ol>' +
+      return '<div class="team"' + (isAdmin() ? ' data-team-index="' + i + '"' : '') + ' style="animation-delay:' + (reduce ? 0 : i * 70) + 'ms">' +
+        '<div class="team-hd"><span class="nm">Team ' + LETTERS[i] + '</span><span class="team-meta"><span class="ct">' + team.length +
+        (team.length === 1 ? ' player' : ' players') + '</span>' +
+        (isAdmin() ? '<span class="team-positions">' + c.h + ' Handle &middot; ' + c.c + ' Cutter</span>' : '') + '</span></div>' +
+        '<ol>' + rows + '</ol>' +
         '<div class="bal"><span>' + (c.f + c.m > 0 ? c.f + "♀ " + c.m + "♂ &middot; " : "") +
-        c.A + " T1 &middot; " + c.I + " T2 &middot; " + c.B + " T3" + (c.U ? " &middot; " + c.U + " U" : "") +
+        c.A + " T1 &middot; " + c.I + " T2 &middot; " + c.B + " T3" + (c.U ? " &middot; " + c.U + " T4" : "") +
         '</span><span>Score <b>' + FB.score(team) + '</b></span></div></div>';
     }).join("");
   }
 
   /* The step buttons offer 2 to 8, so the suggestion never goes past them. */
-  var MAX_TEAMS = 8;
-  function suggestedTeams(joined) { return Math.max(2, Math.min(MAX_TEAMS, Math.round(joined / 8))); }
+  function suggestedTeams(joined) { return joined >= 20 ? 4 : 2; }
 
   function teamCount(joined) {
-    var max = Math.max(2, Math.min(MAX_TEAMS, joined));
     var n = state.teamsWanted || suggestedTeams(joined);
-    return Math.min(Math.max(2, n), max);
+    return n === 4 ? 4 : 2;
   }
 
   function previewText(joined, n) {
@@ -749,17 +814,17 @@
         'Everyone who joined gets a notification when they do.</p></div>';
     }
 
-    var n = teamCount(joined), top = Math.min(MAX_TEAMS, Math.max(2, joined));
+    var n = teamCount(joined);
     h += '<div class="sort-label">' + (v.drawn ? "Reshuffle" : "Sort teams") + '</div>' +
       '<button class="fdisc' + (state.landed ? " landed" : "") + '" data-act="draw" type="button" aria-label="' +
-      (v.drawn ? "Reshuffle into " : "Spin to draw ") + n + ' teams"' + (joined < 2 ? " disabled" : "") + '>' + DISC + '</button>' +
+      (v.drawn ? "Reshuffle into " : "Spin to draw ") + n + ' teams"' + (joined < n ? " disabled" : "") + '>' + DISC + '</button>' +
       '<div class="progress" id="drawProg" aria-hidden="true">' + BARS + '</div>' +
-      '<p class="eyebrow count-label">Number of teams</p><div class="steps" role="group" aria-label="Number of teams">';
-    for (var k = 2; k <= top; k++) {
-      h += '<button type="button" data-act="n" data-n="' + k + '" aria-pressed="' + (k === n) + '"><span>' + k + '</span></button>';
-    }
-    h += '</div><p class="preview">' + esc(joined < 2 ? "At least 2 people need to join first" : previewText(joined, n)) + '</p>' +
-      '<p class="tn-error" id="drawError"></p>';
+      '<p class="draw-preview">' + esc(previewText(joined, n)) + '</p>' +
+      '<div class="steps" role="group" aria-label="Choose 2 or 4 teams">';
+    [2, 4].forEach(function (k) {
+      h += '<button type="button" data-act="n" data-n="' + k + '" aria-pressed="' + (k === n) + '"' + (joined < k ? ' disabled' : '') + '><span>' + k + '</span></button>';
+    });
+    h += '</div><p class="tn-error" id="drawError"></p>';
 
     if (v.drawn && v.teams) {
       h += '<p class="shared-banner"><b>Teams are out.</b> ' +
@@ -768,7 +833,6 @@
           : state.notified === 0 ? "Nobody who joined has notifications on, so tell the group chat"
           : state.notified + " device" + (state.notified === 1 ? "" : "s") + " notified") + '</p>' +
         '<div class="teams-grid">' + teamsHtml(v.teams) + '</div>' +
-        '<p class="tn-note">Late joiners get a team automatically. Use the team and position selectors to make changes.</p>' +
         '<div class="row draw-actions"><button class="btn danger" data-act="undraw" type="button"><span>Take teams back</span></button></div>';
     }
     return h + '</div>';
@@ -787,14 +851,10 @@
       '</h3><div>' + tag + '</div></div>';
 
     if (!v.isGame) {
-      h += '<p class="day-msg">' + (past ? "There was no session on this day." : "Nothing on. Add a session and it shows up for everyone as a game night.") + '</p>';
       if (!past) h += '<div class="row day-actions"><button class="btn solid" data-act="add" type="button"><span>Schedule a session</span></button></div>';
     } else {
       h += '<div class="day-cols">' + whoHtml("Joined", v.joined || [], false) + whoHtml("Passing", v.passed || [], true) + '</div>';
       if (isToday) h += drawZoneHtml(v);
-      else if (!past) h += '<p class="day-msg">' + (v.canJoin
-        ? 'Tomorrow’s session is open for sign-ups in the separate card above.'
-        : 'Sign-ups open the day before this session.') + '</p>';
       if (!past) h += '<div class="row day-actions"><button class="btn danger" data-act="remove" type="button"><span>Call off this session</span></button></div>';
     }
     dayEl.innerHTML = h;
@@ -885,16 +945,11 @@
     else if (act === "n") { state.teamsWanted = +b.getAttribute("data-n"); renderDay(); }
   });
 
-  dayEl.addEventListener("change", function (e) {
-    var control = e.target.closest("[data-assignment]");
-    if (!control) return;
-    if (state.busy || state.spinning) { renderDay(); return; }
-    var body = { id: control.getAttribute("data-id") };
-    var kind = control.getAttribute("data-assignment");
-    body[kind] = kind === "team" ? Number(control.value) : control.value;
+  function updateAssignment(body) {
+    if (!isAdmin() || state.busy || state.spinning || !state.day) return;
     var date = state.day.date;
     state.busy = true;
-    dayEl.querySelectorAll('[data-assignment]').forEach(function (select) { select.disabled = true; });
+    dayEl.querySelectorAll('[data-assignment]').forEach(function (button) { button.disabled = true; });
     api("PUT", "/game/" + date + "/assignment", body).then(function (v) {
       state.busy = false;
       if (state.selected === date) { state.day = v; renderDay(); }
@@ -907,6 +962,52 @@
         if (error) error.textContent = err.message;
       });
     });
+  }
+
+  dayEl.addEventListener("click", function (e) {
+    var button = e.target.closest('button[data-assignment="position"]');
+    if (!button || button.disabled) return;
+    if (button.getAttribute("aria-pressed") === "true") return;
+    updateAssignment({ id: button.getAttribute("data-id"), position: button.getAttribute("data-position") });
+  });
+
+  var draggedMember = null;
+  function clearDropTargets() {
+    dayEl.querySelectorAll(".team.drop-target").forEach(function (node) {
+      node.classList.remove("drop-target");
+    });
+  }
+  dayEl.addEventListener("dragstart", function (e) {
+    var row = e.target.closest(".assignment-row[draggable]");
+    if (!row || !isAdmin() || state.busy || state.spinning) { e.preventDefault(); return; }
+    draggedMember = { id: row.getAttribute("data-player-id"), source: Number(row.getAttribute("data-source-team")) };
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", draggedMember.id);
+    row.classList.add("dragging");
+  });
+  dayEl.addEventListener("dragover", function (e) {
+    if (!draggedMember) return;
+    var team = e.target.closest(".team[data-team-index]");
+    clearDropTargets();
+    if (!team || Number(team.getAttribute("data-team-index")) === draggedMember.source) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    team.classList.add("drop-target");
+  });
+  dayEl.addEventListener("drop", function (e) {
+    var team = e.target.closest(".team[data-team-index]");
+    if (!draggedMember || !team) return;
+    e.preventDefault();
+    var target = Number(team.getAttribute("data-team-index"));
+    var member = draggedMember;
+    draggedMember = null;
+    clearDropTargets();
+    if (target !== member.source) updateAssignment({ id: member.id, team: target });
+  });
+  dayEl.addEventListener("dragend", function () {
+    draggedMember = null;
+    clearDropTargets();
+    dayEl.querySelectorAll(".assignment-row.dragging").forEach(function (row) { row.classList.remove("dragging"); });
   });
 
   /* "Show skill levels" - a leader's own choice, remembered on this device. */
@@ -933,6 +1034,10 @@
   }
 
   function poll() {
+    if (state.tonight && sessionStarted(state.tonight) !== state.sessionStartedShown) {
+      renderTonight();
+      if (serverMode()) loadTonight();
+    }
     if (!serverMode() || document.hidden) return;
     /* Past midnight, "tonight" is a different day even if nothing changed. */
     if (Date.now() - state.loadedAt > 5 * 60 * 1000) return refreshAll();
@@ -948,6 +1053,16 @@
   /* --------------------------------------------------------------- start -- */
 
   function boot() {
+    if (isPreview()) {
+      bandEl.hidden = !isAdmin();
+      loadTonight().then(function () {
+        if (!isAdmin() || !state.tonight) return;
+        state.selected = state.selected || state.tonight.today;
+        state.month = state.month || state.tonight.today.slice(0, 7);
+        refreshLeader();
+      });
+      return;
+    }
     var leader = serverMode() && isAdmin();
     bandEl.hidden = !leader;
     if (!serverMode()) { renderTonight(); renderUpcoming(); return; }

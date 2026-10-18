@@ -3,119 +3,111 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Account &middot; Frisbeing UF</title>
-<meta name="description" content="Sign in or make a Frisbeing UF account with your Tsinglan school email.">
+<title>Account &middot; FRISBEING UF</title>
+<meta name="description" content="Sign in or make a FRISBEING UF account with your Tsinglan school email.">
 <meta name="theme-color" content="#0E2018">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="assets/monogram.png">
 <link rel="apple-touch-icon" href="assets/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Space+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap">
-<link rel="stylesheet" href="assets/brand.css?v=15">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap">
+<link rel="stylesheet" href="assets/brand.css?v=165">
 </head>
-<body>
-
+<body data-background-emblem="false">
 <div class="wrap">
-
   <nav class="nav">
-    <a class="mark" href="index.html">
+    <div class="mark">
       <img src="assets/monogram.png" alt="">
-      <span>Frisbeing UF</span>
-    </a>
-    <a class="lnk" href="index.html">The club</a>
-    <a class="lnk" href="sort.html">Sorter</a>
-    <a class="lnk" href="roster.html">Members</a>
-    <a class="lnk" href="admin.html" aria-current="page">Account</a>
+      <div class="mark-copy">
+        <span>FRISBEING UF</span>
+        <small class="mark-est">Est. 2022</small>
+      </div>
+    </div>
+    <a class="lnk" href="index.html">Home</a>
+    <a class="lnk" id="gameNav" href="sort.html" hidden>Game</a>
+    <a class="lnk" id="membershipNav" href="roster.html">Member</a>
+    <a class="lnk" id="accountNav" href="admin.html" aria-current="page">Account</a><div class="nav-member-tools" id="memberTools" hidden><a class="lnk" href="gearhub.html">GearHub</a></div>
   </nav>
-
-  <section class="band-field">
-    <div class="inner" style="max-width:720px">
+  <section class="band-field account-page">
+    <div class="inner">
       <div class="head">
-        <p class="eyebrow dim">Account</p>
-        <h2 class="display" id="portalTitle">Sign in</h2>
+        <h2 class="display" id="portalTitle">Account</h2>
         <div class="slashes"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-        <p id="portalLede">Sign in with your Tsinglan Microsoft account. There is nothing to remember: Microsoft knows who you are, and the club decides what you can do.</p>
+        <p id="portalLede">Sign in with your Tsinglan Microsoft account in order to register as a member.</p>
       </div>
-
-      <!-- signed in ------------------------------------------------------ -->
-      <div class="panel" id="signedIn" hidden>
-        <div class="panel-hd">
-          <h3 id="whoName">You are signed in</h3>
-          <span class="count" id="whoRole"></span>
+      <div id="signedIn" hidden>
+        <div class="panel">
+          <p class="profile-name" id="whoName">You are signed in</p>
+          <p class="hint" id="whoEmail"></p>
+          <p class="hint" id="whoMember"></p>
+          <button class="btn spacer" id="accountSignOut" type="button"><span>Sign out</span></button>
         </div>
-        <p class="hint" id="whoEmail" style="color:var(--chalk);font-size:15px"></p>
-        <div class="report" id="whoMember"></div>
-        <div class="row">
-          <a class="btn solid" id="goSorter" href="sort.html"><span>Go to the sorter</span></a>
-          <a class="btn" id="goMembers" href="roster.html"><span>Members &amp; accounts</span></a>
-          <button class="btn spacer" id="signOut" type="button"><span>Sign out</span></button>
-        </div>
+        <section class="career-area">
+          <div class="head profile-heading">
+            <h2 class="display">My Profile</h2>
+            <button class="invite-notification" id="inviteNotification" type="button" aria-label="New teammate invitation. Jump to invitations" title="New teammate invitation" hidden>
+              <img src="assets/monogram.png" alt="">
+            </button>
+          </div>
+          <div class="panel career-panel">
+            <p class="career-attendance"><strong id="attendanceCount">0</strong><span>Sessions Present</span></p>
+            <div class="preferred-action-row">
+              <button class="btn preferred-trigger" id="preferredOpen" type="button"><span>Preferred teammate</span></button>
+              <span class="preferred-action-status" id="preferredActionStatus" role="status" aria-live="polite"></span>
+            </div>
+            <div class="preferred-team-members" id="preferredTeamMembers" hidden></div>
+          </div>
+          <div class="panel teammate-panel" id="teammateArea" hidden>
+            <div class="teammate-invitations" id="teammateInvitations" hidden></div>
+            <div class="teammate-sent" id="teammateSent" hidden></div>
+            <p class="teammate-status" id="teammateStatus" role="status" aria-live="polite"></p>
+          </div>
+          <div class="panel teammate-demo" id="teammateDemo" hidden>
+            <h3>Developer simulations</h3>
+            <div class="row">
+              <button class="btn" type="button" data-teammate-demo="invite"><span>Simulate received invite</span></button>
+              <button class="btn" type="button" data-teammate-demo="pair"><span>Simulate pair formed</span></button>
+              <button class="btn" type="button" data-teammate-demo="trio"><span>Simulate 3-person group</span></button>
+              <button class="btn" type="button" data-teammate-demo="reset"><span>Reset simulations</span></button>
+            </div>
+          </div>
+        </section>
       </div>
-
-      <!-- signed out ----------------------------------------------------- -->
       <div id="signedOut">
+        <div class="preview-actions">
+          <p class="hint">Preview without signing in</p>
+          <div class="row"><button class="btn" data-preview-role="player" type="button"><span>Member</span></button><button class="btn" data-preview-role="admin" type="button"><span>Admin</span></button><button class="btn" data-preview-role="leader" type="button"><span>Admin Manager</span></button></div>
+          <p class="hint">Preview interactions run only in this browser and do not change the live roster or sessions.</p>
+        </div>
         <div class="panel" id="msPanel" hidden>
-          <div class="panel-hd">
-            <h3>Tsinglan Microsoft account</h3>
-            <span class="count" id="domainLabel">@tsinglan.org</span>
-          </div>
-          <p class="hint">The same account you use for Outlook and Teams. First time in, your account is matched to your name on the squad list automatically.</p>
-          <div class="row" style="margin-top:0">
-            <button class="btn solid" id="msBtn" type="button"><span>Sign in with Microsoft</span></button>
-          </div>
+          <button class="btn solid account-sign-in" id="msBtn" type="button"><span>Sign in with Microsoft</span></button>
+          <p class="hint">The same account you use for Outlook and Teams.</p>
           <div class="report" id="msReport"></div>
         </div>
-
-        <div class="panel" id="needsServerPanel" hidden>
-          <div class="panel-hd">
-            <h3>Sign-in is not switched on</h3>
-            <span class="count">Needs the server</span>
-          </div>
-          <p class="hint">Sign-in lives on the club server, and this copy of the site is running without one. The club page, squad list and disc still work. Setup is in <code>server/README.md</code>.</p>
-        </div>
-
-        <div class="panel" id="needsSetupPanel" hidden>
-          <div class="panel-hd">
-            <h3>Microsoft sign-in is not set up yet</h3>
-            <span class="count">One-time</span>
-          </div>
-          <p class="hint">It needs a one-time app registration in <code>entra.microsoft.com</code>, then two values pasted into <code>assets/auth-config.js</code>. Full steps are in <code>README.md</code> under <b>Microsoft sign-in</b>.</p>
-        </div>
-      </div>
-
-      <div class="panel">
-        <div class="panel-hd"><h3>Who can do what</h3></div>
-        <p class="hint" style="margin-bottom:0">
-          <b>Players</b> see the squad list and tonight's teams.
-          <b>Admins and the supreme leader</b> sort teams, read the attendance list, edit the squad,
-          see skill levels and manage accounts. Only the supreme leader can remove an admin's account.
-          Skill levels are never shown to players.
-        </p>
       </div>
     </div>
   </section>
-
-  <footer>
-    <div class="inner">
-      <div style="display:flex;align-items:center;gap:18px">
-        <img src="assets/monogram.png" alt="">
-        <div class="fm">Frisbeing UF<br>Tsinglan School &middot; Est. 2022</div>
-      </div>
-      <div class="fm" style="text-align:right">
-        <a href="index.html">The club</a> &middot; <a href="sort.html">Sorter</a><br>
-        Trainers on. Disc up.
-      </div>
-    </div>
-  </footer>
-
 </div>
-
+<dialog class="preferred-dialog" id="preferredDialog" aria-labelledby="preferredTitle">
+  <div class="preferred-dialog-head">
+    <h2 id="preferredTitle">Preferred teammates</h2>
+    <button class="preferred-close" id="preferredClose" type="button" aria-label="Close">&times;</button>
+  </div>
+  <p class="preferred-count" id="preferredCount">Choose up to 2 members</p>
+  <div class="preferred-list" id="preferredList" role="group" aria-label="Members"></div>
+  <p class="preferred-status" id="preferredStatus" role="status" aria-live="polite"></p>
+  <div class="preferred-dialog-actions">
+    <button class="btn solid" id="preferredSave" type="button"><span>Save</span></button>
+  </div>
+</dialog>
 <script src="assets/server-config.js"></script>
 <script src="assets/auth-config.js"></script>
-<script src="assets/auth.js"></script>
-<script src="assets/motion.js?v=15"></script>
+<script src="assets/auth.js?v=3"></script>
+<script src="assets/preview-mode.js?v=16"></script>
+<script src="assets/navigation.js?v=8"></script>
+<script src="assets/motion.js?v=102"></script>
 <script src="assets/pwa.js"></script>
-<script src="assets/admin.js"></script>
+<script src="assets/admin.js?v=115"></script>
 </body>
 </html>

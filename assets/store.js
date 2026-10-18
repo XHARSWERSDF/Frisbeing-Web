@@ -28,6 +28,7 @@
   /* ------------------------------------------------------------ helpers -- */
 
   function read(key, fallback) {
+    if (root.FBPreview && FBPreview.active()) key = "preview." + FBPreview.role() + "." + key;
     try {
       var raw = window.localStorage.getItem(key);
       if (!raw) return fallback;
@@ -37,6 +38,7 @@
   }
 
   function write(key, value) {
+    if (root.FBPreview && FBPreview.active()) key = "preview." + FBPreview.role() + "." + key;
     try { window.localStorage.setItem(key, JSON.stringify(value)); return true; }
     catch (e) { return false; }
   }
@@ -64,6 +66,7 @@
 
   function request(path, options) {
     options = options || {};
+    if (root.FBPreview && FBPreview.active()) return FBPreview.request(options.method || "GET", path, options.body);
     var headers = options.headers || {};
     headers["Accept"] = "application/json";
     if (options.body) headers["Content-Type"] = "application/json";
@@ -99,7 +102,7 @@
 
   var Store = {
 
-    serverMode: function () { return !!(CFG.apiBase && String(CFG.apiBase).trim()); },
+    serverMode: function () { return !!(root.FBPreview && FBPreview.active()) || !!(CFG.apiBase && String(CFG.apiBase).trim()); },
 
     status: function () {
       return {

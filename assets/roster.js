@@ -8,17 +8,18 @@
   var roster = [];
   var newTier = "I";
   var newGender = "";
+  var newPosition = "c";
+  var tierFilter = "all";
+  var displayedTier = Object.create(null);
 
   var isAdmin = function () { return window.FBAuth && FBAuth.isAdmin(); };
 
   var listEl = el("memberList"),
-      countEl = el("rosterCount"),
       headingEl = el("squadHeading"),
       rosInput = el("rosterInput"),
       rosReport = el("rosterReport"),
       addReport = el("addReport"),
-      backupReport = el("backupReport"),
-      pdfReport = el("pdfReport");
+      backupReport = el("backupReport");
 
   function esc(s) {
     return String(s).replace(/[&<>"]/g, function (c) {
@@ -52,6 +53,52 @@
     }).join("\n");
   }
 
+  function memberKey(member) { return FB.norm(member.name); }
+
+  /* Keep a row in its current tier group while its controls are being edited.
+     Refresh list is the explicit point at which the visible order is updated. */
+  function syncDisplayedTiers() {
+    var present = Object.create(null);
+    roster.forEach(function (member) {
+      var key = memberKey(member);
+      present[key] = true;
+      if (!(key in displayedTier)) displayedTier[key] = member.tier;
+    });
+    Object.keys(displayedTier).forEach(function (key) {
+      if (!present[key]) delete displayedTier[key];
+    });
+  }
+
+  function refreshDisplayedTiers() {
+    displayedTier = Object.create(null);
+    syncDisplayedTiers();
+  }
+
+  function sortedMembers() {
+    syncDisplayedTiers();
+    var rank = { A: 0, I: 1, B: 2, U: 3 };
+    return roster.filter(function (member) {
+      return tierFilter === "all" || tierFilter === "tier" || displayedTier[memberKey(member)] === tierFilter;
+    }).sort(function (a, b) {
+      var tierOrder = tierFilter === "tier"
+        ? (rank[displayedTier[memberKey(a)]] ?? 4) - (rank[displayedTier[memberKey(b)]] ?? 4)
+        : 0;
+      return tierOrder || a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    });
+  }
+
+  var filterEl = el("rosterFilters");
+  filterEl.addEventListener("click", function (event) {
+    var button = event.target.closest("button[data-tier-filter]");
+    if (!button) return;
+    tierFilter = button.getAttribute("data-tier-filter");
+    paint();
+  });
+  el("refreshMemberOrder").addEventListener("click", function () {
+    refreshDisplayedTiers();
+    paint();
+  });
+
   function save(report) {
     paint();
     return FBStore.saveRoster(roster).then(function (r) {
@@ -71,7 +118,6 @@
 
   function paint() {
     var n = roster.length;
-    countEl.textContent = n + (n === 1 ? " member" : " members");
 
     /* A leader can edit all day and wonder why nobody else sees it. Say so. */
     var warn = el("unpublished");
@@ -80,7 +126,7 @@
       warn.hidden = !pending;
       if (pending) {
         warn.innerHTML = '<div class="rep warn"><b>These changes are only on this device.</b> ' +
-          'Press <b>Publish roster</b> below, then replace <code>roster.json</code> on the website ' +
+          'Press <b>Publish roster</b> below, then upload the downloaded file to the website ' +
           'so the squad list updates for everyone.</div>';
       }
     }
@@ -92,7 +138,7 @@
       gcount[m.gender === "f" ? "f" : m.gender === "m" ? "m" : "u"]++;
     });
     headingEl.textContent = n
-      ? n + (n === 1 ? " member" : " members")
+      ? n + "+" + (n === 1 ? " member" : " members")
       : "Nobody yet";
 
     /* Tell the leader whether gender-balancing can actually run yet. */
@@ -125,10 +171,17 @@
       return;
     }
 
-    var order = { A: 0, I: 1, B: 2, U: 3 };
-    roster.slice().sort(function (a, b) {
-      return order[a.tier] - order[b.tier] || a.name.localeCompare(b.name);
-    }).forEach(function (m) {
+    Array.prototype.forEach.call(filterEl.querySelectorAll("button[data-tier-filter]"), function (button) {
+      button.setAttribute("aria-pressed", String(button.getAttribute("data-tier-filter") === tierFilter));
+    });
+    var shownMembers = sortedMembers();
+    if (!shownMembers.length) {
+      var empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = "No members in this tier.";
+      listEl.appendChild(empty);
+    }
+    shownMembers.forEach(function (m) {
       var row = document.createElement("div");
       row.className = "member";
 
@@ -136,27 +189,25 @@
       nm.className = "nm";
       nm.textContent = m.name;
       row.appendChild(nm);
-      var position = document.createElement("select");
-      position.className = "position-select";
-      position.setAttribute("aria-label", m.name + ": position");
-      ["h", "c"].forEach(function (pos) {
-        var option = document.createElement("option");
-        option.value = pos;
-        option.textContent = FB.POSITION_NAME[pos];
-        option.selected = FB.position(m) === pos;
-        position.appendChild(option);
-      });
       if (isAdmin()) {
-        position.addEventListener("change", function () {
-          var target = roster.filter(function (x) { return FB.norm(x.name) === FB.norm(m.name); })[0];
-          if (target) { target.position = position.value; save(); }
+        var position = document.createElement("div");
+        position.className = "position-buttons";
+        position.setAttribute("role", "group");
+        position.setAttribute("aria-label", m.name + ": position");
+        [["h", "H", "Handle"], ["c", "C", "Cutter"]].forEach(function (spec) {
+          var button = document.createElement("button");
+          button.type = "button";
+          button.innerHTML = "<span>" + spec[1] + "</span>";
+          button.title = spec[2];
+          button.setAttribute("aria-label", m.name + ": " + spec[2]);
+          button.setAttribute("aria-pressed", FB.position(m) === spec[0] ? "true" : "false");
+          button.addEventListener("click", function () {
+            var target = roster.filter(function (x) { return FB.norm(x.name) === FB.norm(m.name); })[0];
+            if (target && FB.position(target) !== spec[0]) { target.position = spec[0]; save(); }
+          });
+          position.appendChild(button);
         });
         row.appendChild(position);
-      } else {
-        var badge = document.createElement("span");
-        badge.className = "position-badge";
-        badge.textContent = FB.POSITION_NAME[FB.position(m)];
-        row.appendChild(badge);
       }
 
       /* Skill levels are a leader tool: members see names only. */
@@ -226,6 +277,7 @@
       return;
     }
     roster = res.members;
+    refreshDisplayedTiers();
     save(rosReport);
 
     var by = { A: 0, I: 0, B: 0, U: 0 };
@@ -233,7 +285,7 @@
     var out = [{
       kind: "good",
       html: "<b>Saved " + roster.length + " members.</b> " +
-        by.A + " T1, " + by.I + " T2, " + by.B + " T3" + (by.U ? ", " + by.U + " unclassified" : "") + "."
+        by.A + " T1, " + by.I + " T2, " + by.B + " T3" + (by.U ? ", " + by.U + " T4" : "") + "."
     }];
     if (res.duplicates.length) {
       out.push({ kind: "warn", html: "<b>" + res.duplicates.length + " duplicate name" +
@@ -254,72 +306,24 @@
       : [{ kind: "warn", html: "There is no roster saved yet." }]);
   });
 
-  el("loadDemo").addEventListener("click", function () {
-    rosInput.value = rosterToText(FBStore.DEMO);
-    say(rosReport, [{ html: "<b>Demo squad loaded into the box.</b> Press <b>Save roster</b> to use it, or replace it with your real names first." }]);
-  });
-
-  /* --------------------------------------------------------------- pdf --
-     The club keeps its name list in Google Docs, so the PDF export is the
-     shortest path from "the list changed" to "the website changed". */
-
-  el("pdfFile").addEventListener("change", function (ev) {
-    var file = ev.target.files && ev.target.files[0];
-    ev.target.value = "";
-    if (!file) return;
-
-    el("pdfName").textContent = file.name;
-    say(pdfReport, [{ html: "Reading <b>" + esc(file.name) + "</b>&hellip;" }]);
-
-    file.arrayBuffer()
-      .then(function (buf) { return FB.pdfToText(new Uint8Array(buf), FB.inflate); })
-      .then(function (text) {
-        var res = FB.parseRoster(text);
-        if (!res.members.length) {
-          say(pdfReport, [{
-            kind: "bad",
-            html: "<b>No names found in that PDF.</b> Lines need to read " +
-              "<code>Name_Level</code>, for example <code>Harry Xu_Advanced</code>. " +
-              "If the document is a scan or a photo there is no text to read &mdash; " +
-              "paste the list into the box below instead."
-          }]);
-          return;
-        }
-
-        roster = res.members;
-        save(pdfReport);
-
-        var by = { A: 0, I: 0, B: 0, U: 0 };
-        roster.forEach(function (m) { by[m.tier]++; });
-        var out = [{
-          kind: "good",
-          html: "<b>Read " + roster.length + " members from " + esc(file.name) + ".</b> " +
-            by.A + " T1, " + by.I + " T2, " + by.B + " T3" + (by.U ? ", " + by.U + " unclassified" : "") + ". " +
-            (FBStore.serverMode()
-              ? "Saved to the server \u2014 everyone sees it within a few seconds."
-              : "<b>Now press Publish roster</b> below so everyone sees it.")
-        }];
-        if (res.duplicates.length) {
-          out.push({ kind: "warn", html: "<b>" + res.duplicates.length + " duplicate name" +
-            (res.duplicates.length === 1 ? "" : "s") + "</b> &mdash; the first was kept." + list(res.duplicates) });
-        }
-        if (res.errors.length) {
-          out.push({ kind: "warn", html: "<b>" + res.errors.length + " line" +
-            (res.errors.length === 1 ? "" : "s") + " skipped.</b>" +
-            list(res.errors.map(function (e) { return e.text + " \u2014 " + e.reason; })) });
-        }
-        say(pdfReport, out);
-      })
-      .catch(function (err) {
-        say(pdfReport, [{
-          kind: "bad",
-          html: "<b>Could not read that PDF.</b> " + esc(err && err.message ? err.message : "") +
-            " Paste the list into the box below instead."
-        }]);
-      });
-  });
-
   /* ----------------------------------------------------------- add one -- */
+
+  var onePositionEl = el("onePosition");
+  [["h", "H", "Handle"], ["c", "C", "Cutter"]].forEach(function (spec) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.innerHTML = "<span>" + spec[1] + "</span>";
+    b.title = spec[2];
+    b.setAttribute("aria-label", spec[2]);
+    b.setAttribute("aria-pressed", spec[0] === newPosition ? "true" : "false");
+    b.addEventListener("click", function () {
+      newPosition = spec[0];
+      Array.prototype.forEach.call(onePositionEl.children, function (button, index) {
+        button.setAttribute("aria-pressed", ["h", "c"][index] === newPosition ? "true" : "false");
+      });
+    });
+    onePositionEl.appendChild(b);
+  });
 
   var oneTierEl = el("oneTier");
   ["A", "I", "B", "U"].forEach(function (t) {
@@ -338,10 +342,12 @@
 
   var oneGenEl = el("oneGender");
   if (oneGenEl) {
-    [["f", "Girl"], ["m", "Boy"]].forEach(function (spec) {
+    [["f", "♀", "Girl"], ["m", "♂", "Boy"]].forEach(function (spec) {
       var b = document.createElement("button");
       b.type = "button";
       b.innerHTML = "<span>" + spec[1] + "</span>";
+      b.title = spec[2];
+      b.setAttribute("aria-label", spec[2]);
       b.setAttribute("aria-pressed", "false");
       b.addEventListener("click", function () {
         newGender = (newGender === spec[0]) ? "" : spec[0];
@@ -363,7 +369,7 @@
       say(addReport, [{ kind: "warn", html: "<b>" + esc(name) + "</b> is already on the roster." }]);
       return;
     }
-    roster.push({ name: name, tier: newTier, gender: newGender, position: el("onePosition").value });
+    roster.push({ name: name, tier: newTier, gender: newGender, position: newPosition });
     el("oneName").value = "";
     say(addReport, [{ html: "Added <b>" + esc(name) + "</b> as " +
       (newGender ? FB.GENDER_NAME[newGender].toLowerCase() + ", " : "") +
@@ -388,8 +394,8 @@
     a.click();
     document.body.removeChild(a);
     window.setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
-    say(backupReport, [{ html: "<b>Downloaded roster.json with " + roster.length + " members.</b> " +
-      "Replace <code>roster.json</code> on the website with this file, and everyone will see the update." }]);
+    say(backupReport, [{ html: "<b>Downloaded a list with " + roster.length + " members.</b> " +
+      "Upload this file to the website to make the update visible to everyone." }]);
   });
 
   el("importJson").addEventListener("change", function (ev) {
@@ -415,6 +421,7 @@
         return;
       }
       roster = clean;
+      refreshDisplayedTiers();
       save();
       say(backupReport, [{ html: "<b>Imported " + clean.length + " members.</b>" }]);
     };

@@ -154,8 +154,30 @@ posted.
 
 There is no password or passcode endpoint: Microsoft is the only way in.
 
-`GET /me` → `{ "role": "player", "account": { ... } }`, or `401` when the token
-is no longer valid.
+`GET /me` returns the signed-in account, its teammate group, incoming
+invitations and pending invitations it sent. `attendanceCount` is the number
+of sessions the member was marked in for at the 9pm China-time cutoff.
+
+`GET /gear-products` returns the GearHub catalog. Admins and the Admin Manager
+can add, edit, or remove products with `POST /gear-products`,
+`PUT /gear-products/:id`, and `DELETE /gear-products/:id`. Product images are
+optional; uploaded images are resized in the browser and stored as JPEG data
+URLs with the product record.
+
+`PUT /me/preferences` accepts `{ "preferredTeammates": ["Name", "Name"] }`
+and sends invitations to at most two roster members. The captain of a
+two-person group can invite one more member with `POST /me/teammate-invitations`
+and `{ "member": "Name" }`. Invitees respond at
+`POST /me/teammate-invitations/:id/respond` with `{ "response": "accept" }` or
+`{ "response": "decline" }`. An accepted invitation adds the invitee to the
+captain's group, which is limited to three people.
+Each account can belong to only one group. A member may receive invitations
+from multiple captains, but accepting one makes all their other pending
+invitations unavailable and removes them from the member's invitation list.
+The captain can remove another member with `DELETE
+/me/teammate-group/members/:memberId`; any member can use the same endpoint
+for their own ID to leave. If the captain leaves a group of three, the next
+member becomes captain; groups with fewer than two people are dissolved.
 
 `POST /logout` with the token in the header. Always `200`.
 
@@ -189,7 +211,7 @@ called off.
 | `GET /schedule?month=2026-09` | anyone | — | `{ month, today, sessions: [{ date, kind, drawn, joined? }] }` — `kind` is `regular` or `extra`; `joined` counts only go to leaders and admins |
 | `POST /schedule` | leaders, admins | `{ "date", "action": "add" \| "remove" }` | `{ date, kind }`. Past days are refused. Removing a day deletes its answers and teams |
 | `GET /game?date=…` | anyone | — | That day as the asker may see it (defaults to today). Everyone: `{ date, today, isGame, kind, canJoin, participants: [{ name }] }`. Without a `date` query, also includes `upcoming`, tomorrow’s view. Signed in, also: `me.rsvp`, `drawn`, and `mine: { letter, members: [names] }` once teams are out. Leaders and admins, also: `joined` (with tier and gender), `passed`, and every team in `teams` |
-| `PUT /game/:date/rsvp` | signed in | `{ "status": "in" \| "out" }` | the updated view. Available on the session day and the previous calendar day in `CLUB_TZ`; earlier/finalized past dates are refused. Each date has its own answer. Joining after the draw inserts the player into a balanced existing team. Leaving removes only that player. Repeating the same answer is a no-op |
+| `PUT /game/:date/rsvp` | signed in | `{ "status": "in" \| "out" }` | the updated view. Available on the session day and the previous calendar day in `CLUB_TZ`; tonight's answers close at 9pm. Each date has its own answer. Joining after the draw inserts the player into a balanced existing team. Leaving removes only that player. Repeating the same answer is a no-op |
 | `POST /game/:date/draw` | leaders, admins | `{ "n": 3 }` | the updated view, plus `notifying`: how many devices are being told |
 | `DELETE /game/:date/draw` | leaders, admins | — | takes the teams back and reopens answers |
 | `PUT /game/:date/assignment` | leaders, admins | `{ "id": "player-id", "team": 0, "position": "h" }` (team or position may be omitted) | updated view. Moves one player to an existing zero-based team and/or changes their session position; `409` if no draw exists |
@@ -209,7 +231,10 @@ Public `participants` contains display names only, including after a draw;
 it excludes tiers, positions, account identifiers, emails, passing lists and
 team assignments. Today and tomorrow have independent attendance. Team
 draws are restricted to the session day. Canceling a session removes its
-attendance and hides its card on the next poll.
+attendance and hides its card on the next poll. At 9pm `CLUB_TZ`, the server
+freezes each session's `in` answers as present and adds one to those members'
+attendance totals. Finalization is idempotent across restarts; canceling a
+session after finalization also removes its attendance from those totals.
 
 On startup, `roster-update.json` merges the newest supplied list once per
 revision into the persisted roster. Blank tiers retain existing values or

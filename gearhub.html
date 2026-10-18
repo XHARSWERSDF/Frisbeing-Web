@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GearHub &middot; FRISBEING UF</title>
+<meta name="theme-color" content="#0E2018">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="assets/monogram.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap">
+<link rel="stylesheet" href="assets/brand.css?v=165">
+</head>
+<body>
+<div class="wrap">
+  <nav class="nav">
+    <div class="mark"><img src="assets/monogram.png" alt=""><div class="mark-copy"><span>FRISBEING UF</span><small class="mark-est">Est. 2022</small></div></div>
+    <a class="lnk" href="index.html">Home</a>
+    <a class="lnk" id="gameNav" href="sort.html" hidden>Game</a>
+    <a class="lnk" id="membershipNav" href="roster.html">Member</a>
+    <a class="lnk" id="accountNav" href="admin.html">Account</a><div class="nav-member-tools" id="memberTools" hidden><a class="lnk" href="gearhub.html" aria-current="page">GearHub</a></div>
+  </nav>
+  <section class="band-field gearhub-page">
+    <div class="inner gearhub-inner">
+      <div class="head gearhub-heading">
+        <div><h2 class="display">GearHub</h2><p class="gearhub-lede">Frisbeing gear for the field.</p></div>
+        <button class="gearhub-cart" id="gearhubCart" type="button" aria-haspopup="dialog" aria-controls="gearhubCartDialog">Bag · 0 items · ¥0</button>
+      </div>
+      <div class="gearhub-grid" id="gearhubProducts"></div>
+      <section class="gearhub-manager" id="gearhubManagerArea" hidden>
+        <button class="btn gearhub-manager-toggle" id="toggleProductForm" type="button" aria-expanded="false"><span>Add product</span></button>
+        <form class="gearhub-product-form" id="gearhubProductForm" hidden>
+          <label><span class="gearhub-label-line">Product name <span class="gearhub-required" aria-hidden="true">*</span></span><input id="gearhubProductName" name="name" type="text" maxlength="80" required></label>
+          <label><span class="gearhub-label-line">Price (CNY) <span class="gearhub-required" aria-hidden="true">*</span></span><input id="gearhubProductPrice" name="price" type="number" min="0.01" max="1000000" step="0.01" inputmode="decimal" required></label>
+          <label class="gearhub-description-field"><span class="gearhub-label-line">Description</span><textarea id="gearhubProductDescription" name="description" maxlength="500" rows="3"></textarea></label>
+          <label class="gearhub-image-field"><span class="gearhub-label-line">Product image</span><input id="gearhubProductImage" name="image" type="file" accept="image/png,image/jpeg,image/webp"></label>
+          <div class="gearhub-upload-preview-wrap" id="gearhubUploadPreviewWrap" hidden>
+            <img class="gearhub-upload-preview" id="gearhubUploadPreview" alt="Product image preview">
+            <button class="gearhub-remove-upload" id="removeGearhubUpload" type="button" aria-label="Remove product image" title="Remove image"><span aria-hidden="true"></span></button>
+          </div>
+          <button class="btn solid gearhub-save-product" id="saveGearhubProduct" type="submit"><span>Save product</span></button>
+          <p class="gearhub-admin-status" id="gearhubAdminStatus" role="status" aria-live="polite"></p>
+        </form>
+      </section>
+    </div>
+  </section>
+</div>
+<dialog class="gearhub-dialog" id="frisbeeDialog" aria-labelledby="frisbeeTitle">
+  <button class="gearhub-dialog-close" id="closeFrisbee" type="button" aria-label="Close">&times;</button>
+  <div class="gearhub-dialog-art" aria-hidden="true">
+    <span class="gearhub-coming-soon" id="gearhubDetailComingSoon" hidden>COMING SOON</span>
+    <img class="gearhub-dialog-product-image" id="gearhubDetailImage" alt="">
+    <div class="gearhub-product-placeholder gearhub-detail-placeholder" id="gearhubDetailPlaceholder" hidden></div>
+  </div>
+  <div class="gearhub-dialog-info">
+    <h2 id="frisbeeTitle"></h2>
+    <p class="gearhub-dialog-description" id="gearhubDetailDescription"></p>
+    <strong class="gearhub-price" id="gearhubDetailPrice"></strong>
+    <div class="gearhub-quantity-row"><div class="gearhub-quantity" role="group" aria-label="Choose quantity"><button id="quantityDown" type="button" aria-label="Decrease quantity"><span aria-hidden="true">−</span></button><output id="quantityValue" aria-live="polite">1</output><button id="quantityUp" type="button" aria-label="Increase quantity"><span aria-hidden="true">+</span></button></div></div>
+    <div class="gearhub-detail-total"><span>Total</span><strong id="gearhubDetailTotal" aria-live="polite"></strong></div>
+    <button class="btn solid gearhub-add" id="gearhubAdd" type="button"><span>Add to bag</span></button>
+    <div class="gearhub-product-admin-actions" id="gearhubProductAdminActions" hidden>
+      <div class="gearhub-product-admin-row">
+        <button class="btn" id="editGearhubProduct" type="button"><span>Edit product</span></button>
+        <button class="btn" id="removeGearhubProduct" type="button"><span>Remove product</span></button>
+      </div>
+      <button class="btn gearhub-preorder-toggle" id="toggleGearhubPreorder" type="button"><span>Mark as pre-order</span></button>
+    </div>
+    <p class="gearhub-added" id="gearhubAdded" role="status" aria-live="polite"></p>
+  </div>
+</dialog>
+<dialog class="gearhub-dialog gearhub-cart-dialog" id="gearhubCartDialog" aria-labelledby="gearhubCartTitle">
+  <button class="gearhub-dialog-close" id="closeGearhubCart" type="button" aria-label="Close">&times;</button>
+  <div class="gearhub-cart-content">
+    <h2 id="gearhubCartTitle">Your Order</h2>
+    <div class="gearhub-cart-items" id="gearhubCartItems"></div>
+    <div class="gearhub-cart-total"><span>Total</span><strong id="gearhubCartTotal">¥0</strong></div>
+  </div>
+</dialog>
+<script src="assets/server-config.js"></script>
+<script src="assets/auth-config.js"></script>
+<script src="assets/auth.js?v=3"></script>
+<script src="assets/preview-mode.js?v=16"></script>
+<script src="assets/navigation.js?v=8"></script>
+<script src="assets/motion.js?v=102"></script>
+<script src="assets/pwa.js"></script>
+<script src="assets/gearhub.js?v=14"></script>
+</body>
+</html>

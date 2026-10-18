@@ -25,7 +25,7 @@
   var PKCE = "frisbeing.pkce.v1";
   var listeners = [];
 
-  var ROLE_NAME = { leader: "Supreme leader", admin: "Admin", player: "Player" };
+  var ROLE_NAME = { leader: "Admin Manager", admin: "Admin", player: "Member" };
   var SCOPE = "openid profile email";
 
   function serverMode() { return !!(SRV.apiBase && String(SRV.apiBase).trim()); }
@@ -79,6 +79,7 @@
       via: "microsoft",
       role: account.role,
       member: account.member || null,
+      attendanceCount: Number(account.attendanceCount) || 0,
       token: token,
       until: now() + lasts()
     });
@@ -124,6 +125,15 @@
 
   var Auth = {
     ROLE_NAME: ROLE_NAME,
+    accountName: function (email) {
+      return String(email || "").split("@")[0].replace(/_\d+$/, "")
+        .split(/[._-]+/).filter(Boolean).map(function (part) {
+          return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+        }).join(" ");
+    },
+    accountRoleLabel: function (role) {
+      return { player: "Member", admin: "admin", leader: "Admin Manager" }[role] || "Member";
+    },
     serverMode: serverMode,
     configured: configured,
     canSignIn: function () { return serverMode() && configured(); },
@@ -133,7 +143,8 @@
       if (!s) return null;
       return {
         email: s.email, name: s.name || s.email, via: s.via,
-        role: Auth.role(), member: s.member || null
+        role: Auth.role(), member: s.member || null,
+        attendanceCount: Number(s.attendanceCount) || 0
       };
     },
 
@@ -273,10 +284,11 @@
           var a = d.account || {};
           var cur = readSession();
           if (!cur || cur.token !== s.token) return null;
-          if (cur.role !== d.role || cur.member !== (a.member || null) || cur.name !== a.name) {
+          if (cur.role !== d.role || cur.member !== (a.member || null) || cur.name !== a.name || cur.attendanceCount !== (Number(a.attendanceCount) || 0)) {
             cur.role = d.role;
             cur.member = a.member || null;
             cur.name = a.name || cur.name;
+            cur.attendanceCount = Number(a.attendanceCount) || 0;
             writeSession(cur);
             Auth._fire();
           }

@@ -132,6 +132,8 @@ function load() {
   /* Accounts arrived after the roster, so older data files have neither. */
   if (!Array.isArray(db.users)) db.users = [];
   if (!db.sessions || typeof db.sessions !== "object") db.sessions = {};
+  if (!Array.isArray(db.teammateInvitations)) db.teammateInvitations = [];
+  if (!Array.isArray(db.teammateGroups)) db.teammateGroups = [];
   const now = Date.now();
   for (const [key, s] of Object.entries(db.sessions)) {
     if (!s || s.until < now) delete db.sessions[key];
@@ -139,6 +141,12 @@ function load() {
   /* Sessions arrived after accounts. Regular Tuesdays and Thursdays count
      from the day the calendar was first switched on, never before it. */
   let fresh = false;
+  if (!Array.isArray(db.gearProducts)) db.gearProducts = [];
+  if (!db.gearProductsInitialized) {
+    if (!db.gearProducts.some((product) => product && product.id === "club-frisbee")) db.gearProducts.unshift({ id: "club-frisbee", name: "Club Frisbee", description: "Official Frisbeing UF disc", price: 50, image: "assets/photos/club-frisbee-reference.png", createdAt: Date.now() });
+    db.gearProductsInitialized = true;
+    fresh = true;
+  }
   if (!db.schedule || typeof db.schedule !== "object") { db.schedule = {}; fresh = true; }
   const sch = db.schedule;
   if (!Array.isArray(sch.weekdays)) sch.weekdays = DEFAULT_WEEKDAYS.slice();
@@ -177,7 +185,19 @@ function load() {
     fresh = true;
   }
   let migratedDraw = false;
-  for (const game of Object.values(db.games)) if (game.draw) {
+  for (const game of Object.values(db.games)) if (game && game.draw) {
+    if (!Array.isArray(game.draw.teams)) {
+      game.draw = null;
+      migratedDraw = true;
+      fresh = true;
+      continue;
+    }
+    const safeTeams = game.draw.teams.map((team) => Array.isArray(team) ? team.filter((player) => player && typeof player === "object") : []);
+    if (safeTeams.some((team, index) => !Array.isArray(game.draw.teams[index]) || team.length !== game.draw.teams[index].length)) {
+      game.draw.teams = safeTeams;
+      migratedDraw = true;
+      fresh = true;
+    }
     for (const team of game.draw.teams) for (const p of team) {
       if (!p.position) {
         const entry = db.roster.find((m) => FB.norm(m.name) === FB.norm(p.member));
@@ -401,7 +421,50 @@ function relinkAccounts() {
 
 /* What an account holder is told about themselves. Never their tier. */
 function accountView(user) {
-  return { email: user.email, name: user.name, role: roleFor(user.email), member: user.member || null };
+  return {
+    email: user.email, name: user.name, role: roleFor(user.email),
+    member: user.member || null, attendanceCount: Number(user.attendanceCount) || 0,
+    preferredTeammates: Array.isArray(user.preferredTeammates) ? user.preferredTeammates : []
+  };
+}
+
+function teammateGroupFor(userId) {
+  return db.teammateGroups.find((group) => Array.isArray(group.members) && group.members.includes(userId)) || null;
+}
+
+function teammateGroupView(group, user) {
+  if (!group) return null;
+  const leader = db.users.find((entry) => entry.id === group.leaderId);
+  return {
+    id: group.id,
+    leaderId: group.leaderId,
+    leaderName: leader ? (leader.member || leader.name) : "Member",
+    isLeader: group.leaderId === user.id,
+    members: group.members.map((id) => db.users.find((entry) => entry.id === id)).filter(Boolean)
+      .map((entry) => ({ id: entry.id, name: entry.member || entry.name, isMe: entry.id === user.id }))
+  };
+}
+
+function teammateInvitationsFor(user) {
+  if (!user.member || teammateGroupFor(user.id)) return [];
+  return db.teammateInvitations.filter((invitation) => invitation.status === "pending" &&
+    FB.norm(invitation.toMember) === FB.norm(user.member)).map((invitation) => {
+      const inviter = db.users.find((entry) => entry.id === invitation.fromUserId);
+      return { id: invitation.id, inviterName: invitation.fromName || (inviter && (inviter.member || inviter.name)) || "Member", createdAt: invitation.createdAt };
+    });
+}
+
+function addTeammateInvitation(fromUser, memberName) {
+  const pending = db.teammateInvitations.find((invitation) => invitation.status === "pending" &&
+    invitation.fromUserId === fromUser.id && FB.norm(invitation.toMember) === FB.norm(memberName));
+  if (pending) return pending;
+  const invitation = {
+    id: crypto.randomBytes(8).toString("hex"), fromUserId: fromUser.id,
+    fromName: fromUser.member || fromUser.name, toMember: memberName,
+    status: "pending", createdAt: Date.now()
+  };
+  db.teammateInvitations.push(invitation);
+  return invitation;
 }
 
 /* -------------------------------------------------------------- sessions --
@@ -425,6 +488,38 @@ function clubDate(ms) {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: CLUB_TZ, year: "numeric", month: "2-digit", day: "2-digit"
   }).format(new Date(ms == null ? Date.now() : ms));
+}
+
+function clubMinutes(ms) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: CLUB_TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+  }).formatToParts(new Date(ms == null ? Date.now() : ms));
+  const hour = Number(parts.find((p) => p.type === "hour").value);
+  const minute = Number(parts.find((p) => p.type === "minute").value);
+  return hour * 60 + minute;
+}
+
+/* Freeze each session's Join list once 9pm China time has passed. The
+   finalized marker makes the count safe to run repeatedly after restarts. */
+function finalizeAttendanceDue(now = Date.now()) {
+  const today = clubDate(now);
+  const minutes = clubMinutes(now);
+  let changed = false;
+  for (const [date, game] of Object.entries(db.games)) {
+    if (!sessionKind(date) || date > today || (date === today && minutes < 21 * 60)) continue;
+    if (game.attendanceFinalizedAt) continue;
+    const present = Object.entries(game.rsvps || {})
+      .filter(([, status]) => status === "in")
+      .map(([userId]) => userId);
+    game.attendance = present;
+    game.attendanceFinalizedAt = now;
+    for (const userId of present) {
+      const user = db.users.find((entry) => entry.id === userId);
+      if (user) user.attendanceCount = (Number(user.attendanceCount) || 0) + 1;
+    }
+    changed = true;
+  }
+  if (changed) save();
 }
 
 function isDateString(s) {
@@ -500,11 +595,14 @@ function gameView(date, who, today = clubDate()) {
     date, today, tz: CLUB_TZ, kind, isGame: !!kind,
     games: db.gamesVersion, signedIn: !!who, role: who ? who.role : null,
     participants: game ? joinedPlayers(game).map((p) => ({ name: p.name })) : [],
-    canJoin: !!kind && date >= today && date <= addDays(today, 1)
+    canJoin: !!kind && date >= today && date <= addDays(today, 1) &&
+      (date !== today || clubMinutes() < 20 * 60 + 10)
   };
   if (!who) return view;
 
-  const draw = game && game.draw;
+  const draw = game && game.draw && Array.isArray(game.draw.teams)
+    ? Object.assign({}, game.draw, { teams: game.draw.teams.map((team) => Array.isArray(team) ? team.filter((player) => player && typeof player === "object") : []) })
+    : null;
   view.me = { rsvp: (game && game.rsvps[who.user.id]) || null };
   view.drawn = !!draw;
   if (draw) {
@@ -601,6 +699,11 @@ function pushOne(endpoint) {
   });
 }
 
+function teammateInvitationsSentBy(user) {
+  return db.teammateInvitations.filter((invitation) => invitation.status === "pending" && invitation.fromUserId === user.id)
+    .map((invitation) => ({ id: invitation.id, memberName: invitation.toMember, createdAt: invitation.createdAt }));
+}
+
 /* Fire and forget, so a slow push service never holds up the draw. Returns
    how many devices are being told. */
 function notifyUsers(userIds) {
@@ -688,6 +791,10 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
+    if (route === "/gear-products" && req.method === "GET") {
+      return send(res, 200, { products: db.gearProducts });
+    }
+
     /* --- sign in with Microsoft ----------------------------------------- */
 
     if (route === "/login/microsoft" && req.method === "POST") {
@@ -737,13 +844,211 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (route === "/me" && req.method === "GET") {
+      finalizeAttendanceDue();
       const who = whoIs(req);
       if (!who) return send(res, 401, { error: "Not signed in." });
-      return send(res, 200, { role: who.role, account: who.user ? accountView(who.user) : null });
+      return send(res, 200, {
+        role: who.role,
+        account: who.user ? accountView(who.user) : null,
+        teammateGroup: who.user ? teammateGroupView(teammateGroupFor(who.user.id), who.user) : null,
+        teammateInvitations: who.user ? teammateInvitationsFor(who.user) : [],
+        teammateInvitationsSent: who.user ? teammateInvitationsSentBy(who.user) : []
+      });
+    }
+
+    if (route === "/me/preferences" && req.method === "PUT") {
+      const who = whoIs(req);
+      if (!who || !who.user) return send(res, 401, { error: "Not signed in." });
+      const body = await readBody(req);
+      const requested = body && body.preferredTeammates;
+      if (!Array.isArray(requested) || requested.length > 2 || requested.some((name) => typeof name !== "string")) {
+        return send(res, 400, { error: "Choose up to two members." });
+      }
+      const names = [];
+      for (const raw of requested) {
+        const member = db.roster.find((entry) => FB.norm(entry.name) === FB.norm(raw));
+        if (!member) return send(res, 400, { error: "Choose members from the current member list." });
+        if (who.user.member && FB.norm(member.name) === FB.norm(who.user.member)) {
+          return send(res, 400, { error: "You cannot invite yourself." });
+        }
+        if (names.some((name) => FB.norm(name) === FB.norm(member.name))) {
+          return send(res, 400, { error: "Choose each member only once." });
+        }
+        names.push(member.name);
+      }
+      const group = teammateGroupFor(who.user.id);
+      if (group && group.leaderId !== who.user.id) {
+        return send(res, 409, { error: "Only the group captain can invite teammates." });
+      }
+      const inviteSlots = group ? 3 - group.members.length : 2;
+      if (names.length > inviteSlots) {
+        return send(res, 409, { error: group ? "Your group can invite one more member." : "You can invite up to two teammates." });
+      }
+      for (const name of names) {
+        const target = db.users.find((entry) => entry.member && FB.norm(entry.member) === FB.norm(name));
+        if (target && teammateGroupFor(target.id)) {
+          return send(res, 409, { error: name + " is already in a teammate group." });
+        }
+      }
+      db.teammateInvitations = db.teammateInvitations.filter((invitation) =>
+        invitation.status !== "pending" || invitation.fromUserId !== who.user.id ||
+        names.some((name) => FB.norm(name) === FB.norm(invitation.toMember)));
+      who.user.preferredTeammates = names;
+      names.forEach((name) => addTeammateInvitation(who.user, name));
+      save();
+      return send(res, 200, { preferredTeammates: names, invitationsSent: names.length });
+    }
+
+    if (route === "/me/teammate-invitations" && req.method === "POST") {
+      const who = whoIs(req);
+      if (!who || !who.user) return send(res, 401, { error: "Not signed in." });
+      const body = await readBody(req);
+      const member = db.roster.find((entry) => FB.norm(entry.name) === FB.norm(body && body.member));
+      if (!member) return send(res, 400, { error: "Choose a member from the current member list." });
+      if (who.user.member && FB.norm(who.user.member) === FB.norm(member.name)) return send(res, 400, { error: "You cannot invite yourself." });
+      const group = teammateGroupFor(who.user.id);
+      if (!group || group.leaderId !== who.user.id || group.members.length !== 2) {
+        return send(res, 409, { error: "Only the captain of a two-person group can invite one more teammate." });
+      }
+      const target = db.users.find((entry) => entry.member && FB.norm(entry.member) === FB.norm(member.name));
+      if (target && teammateGroupFor(target.id)) return send(res, 409, { error: member.name + " is already in a teammate group." });
+      addTeammateInvitation(who.user, member.name);
+      save();
+      return send(res, 200, { invitationSent: true, teammateGroup: teammateGroupView(group, who.user), teammateInvitations: teammateInvitationsFor(who.user), teammateInvitationsSent: teammateInvitationsSentBy(who.user) });
+    }
+
+    const teammateMemberRemoval = /^\/me\/teammate-group\/members\/([a-f0-9]{16})$/.exec(route);
+    if (teammateMemberRemoval && req.method === "DELETE") {
+      const who = whoIs(req);
+      if (!who || !who.user) return send(res, 401, { error: "Not signed in." });
+      const group = teammateGroupFor(who.user.id);
+      if (!group) return send(res, 404, { error: "You are not in a teammate group." });
+      const memberId = teammateMemberRemoval[1];
+      const index = group.members.indexOf(memberId);
+      const isSelf = memberId === who.user.id;
+      const isCaptain = group.leaderId === who.user.id;
+      if (index < 0) return send(res, 404, { error: "That teammate is no longer in your group." });
+      if (!isSelf && !isCaptain) return send(res, 403, { error: "Only the group captain can remove another teammate." });
+      const member = db.users.find((entry) => entry.id === memberId);
+      if (!member) return send(res, 404, { error: "That account is no longer available." });
+      group.members.splice(index, 1);
+      if (isSelf && isCaptain && group.members.length >= 2) group.leaderId = group.members[0];
+      if (group.members.length < 2) db.teammateGroups = db.teammateGroups.filter((entry) => entry.id !== group.id);
+      save();
+      return send(res, 200, {
+        teammateGroup: teammateGroupView(teammateGroupFor(who.user.id), who.user),
+        teammateInvitations: teammateInvitationsFor(who.user), teammateInvitationsSent: teammateInvitationsSentBy(who.user)
+      });
+    }
+
+    const teammateResponse = /^\/me\/teammate-invitations\/([a-f0-9]{16})\/respond$/.exec(route);
+    if (teammateResponse && req.method === "POST") {
+      const who = whoIs(req);
+      if (!who || !who.user) return send(res, 401, { error: "Not signed in." });
+      const body = await readBody(req);
+      if (!["accept", "decline"].includes(body && body.response)) return send(res, 400, { error: "Choose accept or decline." });
+      const invitation = db.teammateInvitations.find((entry) => entry.id === teammateResponse[1] && entry.status === "pending" &&
+        who.user.member && FB.norm(entry.toMember) === FB.norm(who.user.member));
+      if (!invitation) return send(res, 404, { error: "That invitation is no longer available." });
+      if (body.response === "decline") {
+        invitation.status = "declined";
+        invitation.respondedAt = Date.now();
+      } else {
+        const inviter = db.users.find((entry) => entry.id === invitation.fromUserId);
+        if (!inviter) return send(res, 404, { error: "The inviter's account is no longer available." });
+        if (!db.roster.some((entry) => FB.norm(entry.name) === FB.norm(who.user.member))) {
+          return send(res, 409, { error: "Your account must be linked to the member list before joining a group." });
+        }
+        if (teammateGroupFor(who.user.id)) return send(res, 409, { error: "You are already in a teammate group." });
+        let group = teammateGroupFor(inviter.id);
+        if (group && group.leaderId !== inviter.id) return send(res, 409, { error: "The inviter is already in another teammate group." });
+        if (group && group.members.length >= 3) return send(res, 409, { error: "That teammate group is full." });
+        if (!group) {
+          group = { id: crypto.randomBytes(8).toString("hex"), leaderId: inviter.id, members: [inviter.id], createdAt: Date.now() };
+          db.teammateGroups.push(group);
+        }
+        if (!group.members.includes(who.user.id)) group.members.push(who.user.id);
+        invitation.status = "accepted";
+        invitation.respondedAt = Date.now();
+        db.teammateInvitations.forEach((other) => {
+          if (other !== invitation && other.status === "pending" && FB.norm(other.toMember) === FB.norm(who.user.member)) {
+            other.status = "unavailable";
+            other.respondedAt = Date.now();
+          }
+          if (group.members.length >= 3 && other.status === "pending" && other.fromUserId === inviter.id) {
+            other.status = "unavailable";
+            other.respondedAt = Date.now();
+          }
+        });
+      }
+      save();
+      return send(res, 200, {
+        account: accountView(who.user),
+        teammateGroup: teammateGroupView(teammateGroupFor(who.user.id), who.user),
+        teammateInvitations: teammateInvitationsFor(who.user),
+        teammateInvitationsSent: teammateInvitationsSentBy(who.user)
+      });
     }
 
     /* --- write: leaders and admins only. Checked HERE, so nobody can get
            past it by changing anything in their own browser. ---------------- */
+
+    if (route === "/gear-products" && req.method === "POST") {
+      const who = whoIs(req);
+      if (!runsTheClub(who)) return refuse(res, who);
+      const body = await readBody(req);
+      const name = String(body && body.name || "").replace(/\s+/g, " ").trim();
+      const description = String(body && body.description || "").trim();
+      const price = Number(body && body.price);
+      const image = String(body && body.image || "");
+      if (!name || name.length > 80) return send(res, 400, { error: "Product name must be between 1 and 80 characters." });
+      if (description.length > 500) return send(res, 400, { error: "Product description must be 500 characters or fewer." });
+      if (!Number.isFinite(price) || price <= 0 || price > 1000000) return send(res, 400, { error: "Enter a valid product price." });
+      if (image && (image.length > 900000 || !/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(image))) {
+        return send(res, 400, { error: "Choose a smaller image." });
+      }
+      const product = {
+        id: crypto.randomBytes(8).toString("hex"), name, price: Math.round(price * 100) / 100,
+        description, image, isPreorder: !!(body && body.isPreorder), createdAt: Date.now()
+      };
+      db.gearProducts.push(product);
+      save();
+      return send(res, 201, { product });
+    }
+
+    const gearProductRoute = /^\/gear-products\/([^/]+)$/.exec(route);
+    if (gearProductRoute && req.method === "PUT") {
+      const who = whoIs(req);
+      if (!runsTheClub(who)) return refuse(res, who);
+      const product = db.gearProducts.find((entry) => entry.id === decodeURIComponent(gearProductRoute[1]));
+      if (!product) return send(res, 404, { error: "Product not found." });
+      const body = await readBody(req);
+      const name = String(body && body.name || "").replace(/\s+/g, " ").trim();
+      const description = String(body && body.description || "").trim();
+      const price = Number(body && body.price);
+      const image = body && body.image !== undefined ? String(body.image) : product.image;
+      if (!name || name.length > 80) return send(res, 400, { error: "Product name must be between 1 and 80 characters." });
+      if (description.length > 500) return send(res, 400, { error: "Product description must be 500 characters or fewer." });
+      if (!Number.isFinite(price) || price <= 0 || price > 1000000) return send(res, 400, { error: "Enter a valid product price." });
+      if (image && (image.length > 900000 || !/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(image)) && !image.startsWith("assets/")) {
+        return send(res, 400, { error: "Choose a smaller image." });
+      }
+      Object.assign(product, { name, description, price: Math.round(price * 100) / 100, image,
+        isPreorder: body && body.isPreorder !== undefined ? !!body.isPreorder : !!product.isPreorder });
+      save();
+      return send(res, 200, { product });
+    }
+
+    if (gearProductRoute && req.method === "DELETE") {
+      const who = whoIs(req);
+      if (!runsTheClub(who)) return refuse(res, who);
+      const id = decodeURIComponent(gearProductRoute[1]);
+      const index = db.gearProducts.findIndex((entry) => entry.id === id);
+      if (index < 0) return send(res, 404, { error: "Product not found." });
+      db.gearProducts.splice(index, 1);
+      save();
+      return send(res, 200, { removed: true, id });
+    }
 
     if (route === "/roster" && req.method === "PUT") {
       const who = whoIs(req);
@@ -826,11 +1131,21 @@ const server = http.createServer(async (req, res) => {
          only the supreme leader can remove an admin's. */
       const target = roleFor(user.email);
       if (target === "leader") {
-        return send(res, 403, { error: "The supreme leader's account cannot be removed." });
+        return send(res, 403, { error: "The Admin Manager account cannot be removed." });
       }
       if (target === "admin" && who.role !== "leader") {
-        return send(res, 403, { error: "Only the supreme leader can remove an admin's account." });
+        return send(res, 403, { error: "Only the Admin Manager can remove an admin's account." });
       }
+      const dissolvedLeaders = db.teammateGroups.filter((group) => group.leaderId === user.id).map((group) => group.id);
+      db.teammateGroups = db.teammateGroups.filter((group) => group.leaderId !== user.id);
+      db.teammateGroups.forEach((group) => {
+        group.members = group.members.filter((id) => id !== user.id);
+        if (group.members.length < 2) dissolvedLeaders.push(group.id);
+      });
+      db.teammateGroups = db.teammateGroups.filter((group) => !dissolvedLeaders.includes(group.id));
+      db.teammateInvitations.forEach((invitation) => {
+        if (invitation.fromUserId === user.id && invitation.status === "pending") invitation.status = "unavailable";
+      });
       db.users = db.users.filter((u) => u !== user);
       for (const [key, s] of Object.entries(db.sessions)) {
         if (s.userId === user.id) delete db.sessions[key];
@@ -879,6 +1194,13 @@ const server = http.createServer(async (req, res) => {
       } else if (body.action === "remove") {
         s.added = s.added.filter((d) => d !== date);
         if (sessionKind(date)) s.removed.push(date);       /* still a regular day: call it off */
+        const canceledGame = db.games[date];
+        if (canceledGame && canceledGame.attendanceFinalizedAt) {
+          for (const userId of canceledGame.attendance || []) {
+            const attendee = db.users.find((entry) => entry.id === userId);
+            if (attendee) attendee.attendanceCount = Math.max(0, (Number(attendee.attendanceCount) || 0) - 1);
+          }
+        }
         delete db.games[date];                              /* its answers and teams go with it */
       } else {
         return send(res, 400, { error: "Say whether to add or remove the session." });
@@ -892,6 +1214,7 @@ const server = http.createServer(async (req, res) => {
     /* --- sessions: tonight's game ---------------------------------------- */
 
     if (route === "/game" && req.method === "GET") {
+      finalizeAttendanceDue();
       const today = clubDate();
       const date = url.searchParams.get("date") || today;
       if (!isDateString(date)) return send(res, 400, { error: "That is not a date." });
@@ -913,6 +1236,9 @@ const server = http.createServer(async (req, res) => {
       const date = rsvp[1];
       if (!isDateString(date) || !sessionKind(date)) return send(res, 400, { error: "There is no game on that day." });
       if (date < clubDate()) return send(res, 400, { error: "That game is over." });
+      if (date === clubDate() && clubMinutes() >= 20 * 60 + 10) {
+        return send(res, 400, { error: "Sign-ups for tonight closed at 20:10." });
+      }
       if (date > addDays(clubDate(), 1)) return send(res, 400, { error: "Joining opens the day before the session." });
       const body = await readBody(req);
       if (body.status !== "in" && body.status !== "out") return send(res, 400, { error: "Answer in or out." });
@@ -1053,6 +1379,8 @@ module.exports = { verifyMicrosoftToken };
 
 if (require.main === module) {
   load();
+  finalizeAttendanceDue();
+  setInterval(finalizeAttendanceDue, 30 * 1000);
   server.listen(PORT, process.env.HOST, () => {
     console.log(`Frisbeing API listening on http://localhost:${PORT}`);
     console.log(`  ${db.roster.length} members, ${db.users.length} accounts, version ${db.version}`);
