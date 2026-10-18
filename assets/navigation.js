@@ -4,6 +4,7 @@
 
   var tools = document.getElementById("memberTools");
   var gameLink = document.getElementById("gameNav");
+  var memberLink = document.getElementById("membershipNav");
   var accountLink = document.getElementById("accountNav");
   if (!tools && !gameLink && !accountLink) return;
   var accountLabel = null;
@@ -27,7 +28,12 @@
     var active = !!user || !!(window.FBPreview && FBPreview.active());
     document.body.classList.toggle("has-user-session", active);
     if (tools) tools.hidden = !active;
-    if (gameLink) gameLink.hidden = !active;
+    if (gameLink) gameLink.hidden = false;
+    if (memberLink) memberLink.hidden = !active;
+    if (!active && /\/(roster|gearhub|profile)\.html$/.test(location.pathname)) {
+      window.location.replace("admin.html");
+      return;
+    }
     if (accountLabel) accountLabel.textContent = active ? "My Profile" : "Account";
     refreshInviteBadge(active);
   }

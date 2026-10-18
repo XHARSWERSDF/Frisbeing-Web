@@ -1,6 +1,12 @@
 (function () {
   "use strict";
   var KEY = "frisbeing.ui-preview.v1", ROLE = "frisbeing.ui-preview.role", DATA = "frisbeing.ui-preview.data.v1";
+  var localDevelopment = location.protocol === "file:" || ["localhost", "127.0.0.1", "::1", "[::1]"].indexOf(location.hostname) >= 0;
+  if (!localDevelopment) {
+    try { localStorage.removeItem(KEY); localStorage.removeItem(ROLE); } catch (ignore) { /* Storage may be disabled. */ }
+    return;
+  }
+  document.querySelectorAll(".preview-actions").forEach(function (panel) { panel.hidden = false; });
   var labels = { player: "Member", admin: "Admin", leader: "Admin Manager" };
   var emailNames = { player: "member", admin: "admin", leader: "admin-manager" };
   var demoMembers = { player: "Demo Alex", admin: "Demo Jamie", leader: "Demo Taylor" };

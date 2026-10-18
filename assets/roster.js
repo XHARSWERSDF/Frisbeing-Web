@@ -4,6 +4,11 @@
 (function () {
   "use strict";
 
+  if (!(window.FBAuth && FBAuth.user()) && !(window.FBPreview && FBPreview.active())) {
+    window.location.replace("admin.html");
+    return;
+  }
+
   var el = function (id) { return document.getElementById(id); };
   var roster = [];
   var newTier = "I";
