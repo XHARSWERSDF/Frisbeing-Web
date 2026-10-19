@@ -119,15 +119,26 @@
     var g = game(date), k = kind(date), id = "preview-" + role();
     var ownEntry = signedIn() && g.joined.concat(g.passed).find(function (p) { return previewNorm(p.member || p.name) === previewNorm(user().member); });
     if (ownEntry) id = ownEntry.id;
+    var manages = role() === "admin" || role() === "leader";
+    var published = !!g.draw && g.draw.published !== false;
     var v = { date: date, today: dateAt(0), tz: "Asia/Shanghai", kind: k, isGame: !!k, signedIn: signedIn(), role: role(), games: data.version,
       canJoin: !!k && date >= dateAt(0) && date <= dateAt(1) && (date !== dateAt(0) || beforeSessionCutoff()), participants: g.joined.map(function (p) { return { name: p.name }; }),
-      me: { rsvp: g.joined.some(function (p) { return p.id === id; }) ? "in" : g.passed.some(function (p) { return p.id === id; }) ? "out" : null }, drawn: !!g.draw };
-    if (role() !== "player" && role() !== "guest") { v.joined = g.joined; v.passed = g.passed; if (g.draw) v.teams = g.draw.teams; }
-    if (g.draw) {
+      me: { rsvp: g.joined.some(function (p) { return p.id === id; }) ? "in" : g.passed.some(function (p) { return p.id === id; }) ? "out" : null }, drawn: published,
+      hasDraft: !!g.draw && !published && manages };
+    if (manages) {
+      v.joined = g.joined; v.passed = g.passed;
+      if (g.draw) {
+        var currentGroups = new Map(drawingPlayers(g).map(function (player) { return [player.id, player.teammateGroupId || null]; }));
+        v.teams = g.draw.teams.map(function (team) { return team.map(function (player) {
+          return Object.assign({}, player, { teammateGroupId: currentGroups.get(player.id) || null });
+        }); });
+      }
+    }
+    if (g.draw && (published || manages)) {
       v.draw = { at: g.draw.at, n: g.draw.teams.length };
       v.needsRedraw = !!g.draw.needsRedraw;
-      if (role() !== "player" && role() !== "guest") v.redrawReason = g.draw.redrawReason || null;
-      var idx = v.me.rsvp === "in" ? g.draw.teams.findIndex(function (t) { return t.some(function (p) { return p.id === id; }); }) : -1;
+      if (manages) v.redrawReason = g.draw.redrawReason || null;
+      var idx = published && signedIn() && v.me.rsvp === "in" ? g.draw.teams.findIndex(function (t) { return t.some(function (p) { return p.id === id; }); }) : -1;
       v.mine = idx < 0 ? null : { letter: "ABCDEFGHIJKL"[idx], members: g.draw.teams[idx].map(function (p) { return p.name; }), players: g.draw.teams[idx], position: g.draw.teams[idx].find(function (p) { return p.id === id; }).position };
     }
     return v;
@@ -193,6 +204,14 @@
         }) };
       }
       if (route === "/gear-products" && method === "GET") return { products: d.gearProducts };
+      if (route === "/fris-off-school" && method === "GET") return { image: d.frisOffSchoolQr || "assets/fris-off-school-qr.png" };
+      if (route === "/fris-off-school" && method === "PUT") {
+        if (role() !== "admin" && role() !== "leader") throw new Error("Only Admin and Admin Manager accounts can replace the QR code.");
+        var schoolQr = String(body && body.image || "");
+        if (!schoolQr || schoolQr.length > 900000 || !/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(schoolQr)) throw new Error("Choose a PNG, JPG or WebP image smaller than 650 KB.");
+        d.frisOffSchoolQr = schoolQr; persist();
+        return { image: schoolQr };
+      }
       if (route === "/gear-products" && method === "POST") {
         if (role() !== "admin" && role() !== "leader") throw new Error("Only Admin and Admin Manager accounts can add products.");
         var productName = String(body && body.name || "").trim();
@@ -346,7 +365,7 @@
         result = {};
       } else if (route === "/schedule" && method === "GET") {
         var month = url.searchParams.get("month"), dates = [], count = new Date(Number(month.slice(0, 4)), Number(month.slice(5)), 0).getDate();
-        for (var n = 1; n <= count; n++) { var date = month + "-" + String(n).padStart(2, "0"); if (kind(date)) dates.push({ date: date, kind: kind(date), drawn: !!game(date).draw, joined: game(date).joined.length }); }
+        for (var n = 1; n <= count; n++) { var date = month + "-" + String(n).padStart(2, "0"), scheduledGame = game(date), isPublished = !!scheduledGame.draw && scheduledGame.draw.published !== false; if (kind(date)) dates.push({ date: date, kind: kind(date), drawn: isPublished, hasDraft: !!scheduledGame.draw && !isPublished && (role() === "admin" || role() === "leader"), joined: scheduledGame.joined.length }); }
         return { month: month, today: dateAt(0), sessions: dates };
       } else if (route === "/schedule" && method === "POST") {
         if (body.date < dateAt(0)) throw new Error("That day has already passed.");
@@ -373,17 +392,26 @@
           }
         } else if (action === "draw") {
           if (method === "DELETE") g.draw = null;
-          else { var sorted = FB.sort(drawingPlayers(g), "fair", body.n); if (sorted.error) throw new Error(sorted.error); g.draw = { at: Date.now(), teams: sorted.teams }; }
+          else { var sorted = FB.sort(drawingPlayers(g), "fair", body.n); if (sorted.error) throw new Error(sorted.error); g.draw = { at: Date.now(), published: false, teams: sorted.teams }; }
+        } else if (action === "publish" && method === "POST") {
+          if (!g.draw) throw new Error("Draw teams before publishing.");
+          if (g.draw.published !== false) throw new Error("These teams are already published.");
+          if (g.draw.needsRedraw) throw new Error("Attendance changed. Draw teams again before publishing.");
+          g.draw.published = true;
+          g.draw.publishedAt = Date.now();
         } else if (action === "assignment" && g.draw) {
           var source = g.draw.teams.findIndex(function (t) { return t.some(function (p) { return p.id === body.id; }); });
           if (source < 0) throw new Error("That player is no longer on a team.");
           if (body.team !== undefined && body.team !== source) {
-            if (g.draw.needsRedraw) throw new Error("Attendance changed. Draw teams again before moving players.");
-            var groupIds = new Map(drawingPlayers(g).map(function (p) { return [p.id, p.teammateGroupId]; }));
-            var candidate = g.draw.teams.map(function (t) { return t.map(function (p) { return Object.assign({}, p, { teammateGroupId: groupIds.get(p.id) || null }); }); });
+            var currentGroups = new Map(drawingPlayers(g).map(function (player) { return [player.id, player.teammateGroupId || null]; }));
+            var candidate = g.draw.teams.map(function (team) { return team.map(function (player) {
+              return Object.assign({}, player, { teammateGroupId: currentGroups.get(player.id) || null });
+            }); });
             var moved = FB.moveTeamMember(candidate, body.id, body.team);
             if (moved.error) throw new Error(moved.error);
             g.draw.teams = moved.teams;
+            g.draw.published = false;
+            delete g.draw.publishedAt;
           }
           if (body.position) g.draw.teams.forEach(function (t) { t.forEach(function (p) { if (p.id === body.id) p.position = body.position; }); });
         } else throw new Error("This preview action is unavailable.");
@@ -393,6 +421,33 @@
     }).then(function (result) { return JSON.parse(JSON.stringify(result)); });
   }
   function simulateTeammates(kind) {
+    if (kind === "session-pair" || kind === "session-pair-reset") {
+      localStorage.setItem(KEY, "1");
+      localStorage.setItem(ROLE, "admin");
+      var sessionData = getData(), sessionGame = game(dateAt(0));
+      sessionData.teammateGroups = sessionData.teammateGroups.filter(function (group) { return !group.demoSessionPair; });
+      if (kind === "session-pair") {
+        if (sessionGame.joined.length < 2) {
+          sessionData.roster.slice(0, 2).forEach(function (member, index) {
+            if (!sessionGame.joined.some(function (player) { return previewNorm(player.member || player.name) === previewNorm(member.name); })) {
+              sessionGame.joined.push(Object.assign({ id: "demo-session-player-" + index, member: member.name }, member));
+            }
+          });
+        }
+        var pair = sessionGame.joined.slice(0, 2);
+        if (pair.length === 2) {
+          sessionData.teammateGroups.push({ id: "demo-session-pair", leaderId: pair[0].id, leaderName: pair[0].member || pair[0].name,
+            members: pair.map(function (player) { return { id: player.id, name: player.member || player.name }; }), demo: true, demoSessionPair: true });
+        }
+        var pairedDraw = FB.sort(drawingPlayers(sessionGame), "fair", 2);
+        sessionGame.draw = pairedDraw.error ? null : { at: Date.now(), published: false, teams: pairedDraw.teams };
+      } else {
+        sessionGame.draw = null;
+      }
+      sessionData.version++;
+      persist();
+      return kind === "session-pair";
+    }
     if (!enabled() || role() === "guest") {
       localStorage.setItem(KEY, "1");
       localStorage.setItem(ROLE, "player");
@@ -420,7 +475,11 @@
     }
     persist();
   }
-  window.FBPreview = { active: enabled, signedIn: signedIn, enable: enable, stop: stop, user: user, role: role, request: request, simulateTeammates: simulateTeammates };
+  function hasSessionPair() {
+    return enabled() && getData().teammateGroups.some(function (group) { return group.demoSessionPair; });
+  }
+  window.FBPreview = { active: enabled, signedIn: signedIn, enable: enable, stop: stop, user: user, role: role, request: request,
+    simulateTeammates: simulateTeammates, hasSessionPair: hasSessionPair };
   if (enabled()) {
     // UI-only identity. All preview requests use the isolated local adapter.
     if (window.FBAuth) {

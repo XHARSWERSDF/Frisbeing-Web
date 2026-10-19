@@ -72,15 +72,18 @@ test('small draws match exhaustive search for the best feasible index gap; tier 
   }
 });
 
-test('manual moves reject invalid results without mutation; valid moves keep the limits', () => {
+test('manual admin moves allow any team balance while keeping invalid targets safe', () => {
   const teams = [[player('a', 'I'), player('b', 'I'), player('c', 'I')], [player('d', 'I'), player('e', 'I')]];
-  const before = JSON.stringify(teams);
-  assert.ok(FB.moveTeamMember(teams, 'd', 0).error);
-  assert.equal(JSON.stringify(teams), before);
-  const valid = [[player('a', 'U'), player('b', 'I'), player('c', 'B')], [player('d', 'I'), player('e', 'B')]];
-  const moved = FB.moveTeamMember(valid, 'a', 1);
+  const moved = FB.moveTeamMember(teams, 'd', 0);
   assert.equal(moved.error, undefined);
-  assert.equal(FB.drawError(moved.teams), null);
+  assert.equal(moved.teams[0].filter(p => p.id === 'd').length, 1);
+  assert.equal(moved.teams[1].some(p => p.id === 'd'), false);
+  assert.ok(FB.drawError(moved.teams), 'manual moves may exceed automatic draw limits');
+  assert.ok(FB.moveTeamMember(teams, 'd', 4).error);
+  const paired = [[player('p1', 'A', 'pair'), player('p2', 'I', 'pair')], [player('q', 'B')]];
+  const movedPair = FB.moveTeamMember(paired, 'p1', 1);
+  assert.deepEqual(movedPair.teams[0], []);
+  assert.deepEqual(movedPair.teams[1].map(p => p.id), ['q', 'p1', 'p2']);
 });
 
 test('attendance changes preserve assignments when possible and request redraw when the limits cannot be kept', () => {

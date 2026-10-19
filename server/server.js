@@ -144,6 +144,7 @@ function load() {
      from the day the calendar was first switched on, never before it. */
   let fresh = false;
   if (!Array.isArray(db.gearProducts)) db.gearProducts = [];
+  if (typeof db.frisOffSchoolQr !== "string") db.frisOffSchoolQr = "assets/fris-off-school-qr.png";
   if (!db.gearProductsInitialized) {
     if (!db.gearProducts.some((product) => product && product.id === "club-frisbee")) db.gearProducts.unshift({ id: "club-frisbee", name: "Club Frisbee", description: "Official Frisbeing UF disc", price: 50, image: "assets/photos/club-frisbee-reference.png", createdAt: Date.now() });
     db.gearProductsInitialized = true;
@@ -193,6 +194,13 @@ function load() {
       migratedDraw = true;
       fresh = true;
       continue;
+    }
+    /* Existing draws were published immediately; keep them visible after
+       upgrading, while all new draws start as private admin drafts. */
+    if (game.draw.published === undefined) {
+      game.draw.published = true;
+      migratedDraw = true;
+      fresh = true;
     }
     const safeTeams = game.draw.teams.map((team) => Array.isArray(team) ? team.filter((player) => player && typeof player === "object") : []);
     if (safeTeams.some((team, index) => !Array.isArray(game.draw.teams[index]) || team.length !== game.draw.teams[index].length)) {
@@ -640,12 +648,15 @@ function gameView(date, who, today = clubDate()) {
   const draw = game && game.draw && Array.isArray(game.draw.teams)
     ? Object.assign({}, game.draw, { teams: game.draw.teams.map((team) => Array.isArray(team) ? team.filter((player) => player && typeof player === "object") : []) })
     : null;
+  const managesClub = !!who && runsTheClub(who);
+  const published = !!draw && draw.published !== false;
   view.me = { rsvp: (game && game.rsvps[who.user.id]) || null };
-  view.drawn = !!draw;
-  if (draw) {
+  view.drawn = published;
+  view.hasDraft = !!draw && !published && managesClub;
+  if (draw && (published || managesClub)) {
     view.draw = { at: draw.at, n: draw.teams.length };
     view.needsRedraw = !!draw.needsRedraw;
-    const idx = view.me.rsvp === "in" ? draw.teams.findIndex((t) => t.some((p) => p.id === who.user.id)) : -1;
+    const idx = published && view.me.rsvp === "in" ? draw.teams.findIndex((t) => t.some((p) => p.id === who.user.id)) : -1;
     view.mine = idx < 0 ? null : {
       letter: TEAM_LETTERS[idx],
       members: draw.teams[idx].map(currentName),
@@ -653,7 +664,7 @@ function gameView(date, who, today = clubDate()) {
       position: FB.position(draw.teams[idx].find((p) => p.id === who.user.id))
     };
   }
-  if (runsTheClub(who)) {
+  if (managesClub) {
     view.joined = game ? joinedPlayers(game) : [];
     view.passed = game
       ? Object.entries(game.rsvps).filter(([, a]) => a === "out")
@@ -661,9 +672,10 @@ function gameView(date, who, today = clubDate()) {
           .map((u) => ({ id: u.id, name: u.name })).sort((a, b) => a.name.localeCompare(b.name))
       : [];
     if (draw) {
+      const currentGroups = new Map(joinedPlayers(game).map((player) => [player.id, player.teammateGroupId || null]));
       view.redrawReason = draw.redrawReason || null;
       view.teams = draw.teams.map((t) => t.map((p) => ({
-        id: p.id, name: currentName(p), member: p.member, tier: p.tier, gender: p.gender, position: FB.position(p), teammateGroupId: p.teammateGroupId || null
+        id: p.id, name: currentName(p), member: p.member, tier: p.tier, gender: p.gender, position: FB.position(p), teammateGroupId: currentGroups.get(p.id) || null
       })));
     }
   }
@@ -836,6 +848,10 @@ const server = http.createServer(async (req, res) => {
 
     if (route === "/gear-products" && req.method === "GET") {
       return send(res, 200, { products: db.gearProducts });
+    }
+
+    if (route === "/fris-off-school" && req.method === "GET") {
+      return send(res, 200, { image: db.frisOffSchoolQr || "assets/fris-off-school-qr.png" });
     }
 
     /* --- sign in with Microsoft ----------------------------------------- */
@@ -1065,6 +1081,19 @@ const server = http.createServer(async (req, res) => {
     /* --- write: leaders and admins only. Checked HERE, so nobody can get
            past it by changing anything in their own browser. ---------------- */
 
+    if (route === "/fris-off-school" && req.method === "PUT") {
+      const who = whoIs(req);
+      if (!runsTheClub(who)) return refuse(res, who);
+      const body = await readBody(req);
+      const image = String(body && body.image || "");
+      if (!image || image.length > 900000 || !/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(image)) {
+        return send(res, 400, { error: "Choose a PNG, JPG or WebP image smaller than 650 KB." });
+      }
+      db.frisOffSchoolQr = image;
+      save();
+      return send(res, 200, { image: db.frisOffSchoolQr });
+    }
+
     if (route === "/gear-products" && req.method === "POST") {
       const who = whoIs(req);
       if (!runsTheClub(who)) return refuse(res, who);
@@ -1242,7 +1271,9 @@ const server = http.createServer(async (req, res) => {
         const kind = sessionKind(date);
         if (!kind) continue;
         const g = db.games[date];
-        const s = { date, kind, drawn: !!(g && g.draw) };
+        const published = !!(g && g.draw && g.draw.published !== false);
+        const s = { date, kind, drawn: published };
+        if (full && g && g.draw && !published) s.hasDraft = true;
         if (full) s.joined = g ? Object.values(g.rsvps).filter((a) => a === "in").length : 0;
         sessions.push(s);
       }
@@ -1370,14 +1401,35 @@ const server = http.createServer(async (req, res) => {
       game.draw = {
         at: Date.now(),
         by: who.user.email,
+        published: false,
         teams: result.teams.map((t) => t.map((p) => ({
           id: p.id, name: p.name, member: p.member, tier: p.tier, gender: p.gender, position: FB.position(p), teammateGroupId: p.teammateGroupId || null
         })))
       };
       db.gamesVersion++;
       save();
-      /* Tell everyone on a team - except whoever just pressed the disc. */
-      const notifying = notifyUsers(players.map((p) => p.id).filter((id) => id !== who.user.id));
+      return send(res, 200, gameView(date, who));
+    }
+
+    const publish = /^\/game\/(\d{4}-\d{2}-\d{2})\/publish$/.exec(route);
+    if (publish && req.method === "POST") {
+      const who = whoIs(req);
+      if (!who) return send(res, 401, { error: "Sign in first." });
+      if (!runsTheClub(who)) return send(res, 403, { error: "Only admins can publish the teams." });
+      const date = publish[1];
+      if (!isDateString(date) || !sessionKind(date)) return send(res, 400, { error: "There is no game on that day." });
+      if (date < clubDate()) return send(res, 400, { error: "That game is over." });
+      const game = db.games[date];
+      if (!game || !game.draw) return send(res, 409, { error: "Draw teams before publishing." });
+      if (game.draw.published !== false) return send(res, 409, { error: "These teams are already published." });
+      if (game.draw.needsRedraw) return send(res, 409, { error: "Attendance changed. Draw teams again before publishing." });
+      game.draw.published = true;
+      game.draw.publishedAt = Date.now();
+      game.draw.updatedAt = game.draw.publishedAt;
+      db.gamesVersion++;
+      save();
+      /* Notify only after the admin explicitly publishes the current draw. */
+      const notifying = notifyUsers(joinedPlayers(game).map((p) => p.id).filter((id) => id !== who.user.id));
       return send(res, 200, { ...gameView(date, who), notifying });
     }
 
@@ -1407,23 +1459,20 @@ const server = http.createServer(async (req, res) => {
       if (target === source && (body.position === undefined || body.position === FB.position(player))) {
         return send(res, 200, gameView(date, who));
       }
-      let movedIds = [player.id];
       if (target !== source) {
-        if (game.draw.needsRedraw) return send(res, 409, { error: "Attendance changed. Draw teams again before moving players." });
-        const currentPlayers = joinedPlayers(game);
-        const currentGroups = new Map(currentPlayers.map((p) => [p.id, p.teammateGroupId]));
-        const candidate = game.draw.teams.map((team) => team.map((p) => Object.assign({}, p, { teammateGroupId: currentGroups.get(p.id) || null })));
+        const currentGroups = new Map(joinedPlayers(game).map((attendee) => [attendee.id, attendee.teammateGroupId || null]));
+        const candidate = game.draw.teams.map((team) => team.map((member) => ({ ...member, teammateGroupId: currentGroups.get(member.id) || null })));
         const moved = FB.moveTeamMember(candidate, player.id, target);
         if (moved.error) return send(res, 409, { error: moved.error });
         if (body.position !== undefined) moved.teams[target].find((p) => p.id === player.id).position = body.position;
         game.draw.teams = moved.teams;
-        movedIds = moved.movedIds;
+        game.draw.published = false;
+        delete game.draw.publishedAt;
       }
       if (body.position !== undefined) player.position = body.position;
       game.draw.updatedAt = Date.now();
       db.gamesVersion++;
       save();
-      notifyUsers(movedIds);
       return send(res, 200, gameView(date, who));
     }
 

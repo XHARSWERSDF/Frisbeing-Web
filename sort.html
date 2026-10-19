@@ -15,7 +15,7 @@
 <!-- ?v= matches CACHE in sw.js. The old sorter's script is still in phones'
      caches, and it cannot run this page: a URL that cache has never seen is
      fetched fresh instead. Bump both together when these files change. -->
-<link rel="stylesheet" href="assets/brand.css?v=181">
+<link rel="stylesheet" href="assets/brand.css?v=191">
 </head>
 <body data-background-emblem="false">
 
@@ -32,7 +32,7 @@
     <a class="lnk" href="index.html">Home</a>
     <a class="lnk" id="gameNav" href="sort.html" aria-current="page">Game</a>
     <a class="lnk" id="membershipNav" href="roster.html" hidden>Member</a>
-    <a class="lnk" id="accountNav" href="admin.html">Account</a><div class="nav-member-tools" id="memberTools" hidden><a class="lnk" href="gearhub.html">GearHub</a></div>
+    <a class="lnk" id="accountNav" href="admin.html">Account</a><div class="nav-member-tools" id="memberTools" hidden><a class="lnk" href="gearhub.html">GearHub</a><a class="lnk" href="fris-off-school.html">Fris Off School</a></div>
   </nav>
 
   <!-- tonight: what every player sees ------------------------------------ -->
@@ -84,9 +84,12 @@
 
       <div class="day-panel" id="dayPanel" aria-live="polite"></div>
 
-      <div style="text-align:center">
+      <div class="tier-index-toggles">
         <button class="tiers-toggle admin-only" id="tiersToggle" type="button" aria-pressed="false">
           <span class="box" aria-hidden="true"></span><span>Show tiers</span>
+        </button>
+        <button class="tiers-toggle admin-only" id="indexToggle" type="button" aria-pressed="false">
+          <span class="box" aria-hidden="true"></span><span>Show index</span>
         </button>
       </div>
     </div>
@@ -96,14 +99,14 @@
 </div>
 
 <script src="assets/server-config.js"></script>
-<script src="assets/engine.js?v=78"></script>
+<script src="assets/engine.js?v=80"></script>
 <script src="assets/auth-config.js"></script>
 <script src="assets/auth.js?v=3"></script>
 <script src="assets/teammate-rules.js?v=1"></script>
-<script src="assets/preview-mode.js?v=24"></script>
-<script src="assets/navigation.js?v=12"></script>
+<script src="assets/preview-mode.js?v=29"></script>
+<script src="assets/navigation.js?v=13"></script>
 <script src="assets/motion.js?v=104"></script>
 <script src="assets/pwa.js?v=2"></script>
-<script src="assets/sort.js?v=120"></script>
+<script src="assets/sort.js?v=124"></script>
 </body>
 </html>

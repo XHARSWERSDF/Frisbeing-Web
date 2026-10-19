@@ -57,7 +57,7 @@
     if (tools) tools.hidden = !active;
     if (gameLink) gameLink.hidden = false;
     if (memberLink) memberLink.hidden = !active;
-    if (!active && /\/(roster|gearhub|profile)\.html$/.test(location.pathname)) {
+    if (!active && /\/(roster|gearhub|profile|fris-off-school)\.html$/.test(location.pathname)) {
       window.location.replace("admin.html");
       return;
     }

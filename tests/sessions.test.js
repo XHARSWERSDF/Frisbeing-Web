@@ -127,6 +127,13 @@ test('session API preserves pending draws, rejects invalid moves and persists ro
     await api('POST', `${gameRoute}/draw`, null, { n: 2 }, 401);
     await api('POST', `${gameRoute}/draw`, 'u1', { n: 2 }, 403);
     let view = await api('POST', `${gameRoute}/draw`, 'u0', { n: 2 });
+    assert.equal(view.drawn, false, 'a draw starts as an unpublished draft');
+    assert.equal(view.hasDraft, true, 'admins can work on the private draft');
+    assert.equal(view.notifying, undefined, 'drawing does not notify members');
+    let memberView = await api('GET', '/game', 'u4');
+    assert.equal(memberView.drawn, false);
+    assert.equal(memberView.mine, null);
+    assert.ok(!('teams' in memberView));
     const original = new Map(view.teams.flatMap((t, i) => t.map(p => [p.id, i])));
     let mine = await api('PUT', `${gameRoute}/rsvp`, 'u4', { status: 'in' });
     assert.equal(mine.mine, null, 'late member waits for a redraw if adding them would exceed index limits');
@@ -151,6 +158,15 @@ test('session API preserves pending draws, rejects invalid moves and persists ro
     view = await api('POST', `${gameRoute}/draw`, 'u0', { n: 2 });
     assert.equal(view.needsRedraw, false);
     assert.equal(FB.drawError(view.teams), null);
+    await api('POST', `${gameRoute}/publish`, null, {}, 401);
+    await api('POST', `${gameRoute}/publish`, 'u1', {}, 403);
+    memberView = await api('GET', '/game', 'u4');
+    assert.equal(memberView.mine, null, 'members cannot see teams before publication');
+    view = await api('POST', `${gameRoute}/publish`, 'u0', {});
+    assert.equal(view.drawn, true);
+    assert.equal(view.hasDraft, false);
+    memberView = await api('GET', '/game', 'u4');
+    assert.ok(memberView.mine, 'publication reveals the member team');
     mine = await api('GET', '/game', 'u4');
     const expected = 'ABCDEFGHIJKL'.indexOf(mine.mine.letter);
     assert.equal(mine.mine.position, 'h');
@@ -162,10 +178,6 @@ test('session API preserves pending draws, rejects invalid moves and persists ro
     await api('PUT', `${gameRoute}/assignment`, null, { id: 'u4', team: 1 }, 401);
     await api('PUT', `${gameRoute}/assignment`, 'u0', { id: 'u4', team: 8 }, 400);
     await api('PUT', `${gameRoute}/assignment`, 'u0', { id: 'u4', position: 'bad' }, 400);
-    const target = 1 - expected;
-    const beforeInvalidMove = JSON.stringify((await api('GET', '/game', 'u0')).teams);
-    await api('PUT', `${gameRoute}/assignment`, 'u0', { id: 'u4', team: target, position: 'c' }, 409);
-    assert.equal(JSON.stringify((await api('GET', '/game', 'u0')).teams), beforeInvalidMove);
     view = await api('PUT', `${gameRoute}/assignment`, 'u0', { id: 'u4', position: 'c' });
     assert.equal(view.teams.flat().filter(p => p.id === 'u4').length, 1);
     assert.ok(view.teams[expected].some(p => p.id === 'u4' && p.position === 'c'));
@@ -200,6 +212,12 @@ test('session API preserves pending draws, rejects invalid moves and persists ro
     assert.equal((await api('GET', '/game')).upcoming.isGame, false);
     assert.deepEqual((await api('GET', '/game')).upcoming.participants, []);
     await api('PUT', `/game/${tomorrow}/rsvp`, 'u4', { status: 'in' }, 400);
+    view = await api('POST', `${gameRoute}/draw`, 'u0', { n: 2 });
+    const movedPlayer = view.teams[0][0];
+    view = await api('PUT', `${gameRoute}/assignment`, 'u0', { id: movedPlayer.id, team: 1 });
+    assert.ok(view.teams[1].some(p => p.id === movedPlayer.id), 'admin can make an otherwise invalid manual move');
+    assert.equal(view.drawn, false, 'manual changes return published teams to an admin-only draft');
+    assert.equal(view.hasDraft, true);
     await api('DELETE', `${gameRoute}/draw`, 'u0');
     await api('PUT', `${gameRoute}/assignment`, 'u0', { id: 'u4', team: 0 }, 409);
   } finally { await stop(); fs.rmSync(temp, { recursive: true, force: true }); }

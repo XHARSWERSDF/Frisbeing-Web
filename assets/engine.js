@@ -400,15 +400,14 @@
     if (!Number.isInteger(target) || !teams[target]) return { error: "Choose an existing team." };
     var player = teams.reduce(function (all, team) { return all.concat(team); }, []).find(function (p) { return p.id === id; });
     if (!player) return { error: "That player is no longer on a team. Refresh and try again." };
-    var moved = [];
+    var moving = [], groupId = player.teammateGroupId;
     var candidate = teams.map(function (team) { return team.filter(function (p) {
-      var moving = p.id === id || (player.teammateGroupId && p.teammateGroupId === player.teammateGroupId);
-      if (moving) moved.push(p);
-      return !moving;
+      if (p.id !== id && (!groupId || p.teammateGroupId !== groupId)) return true;
+      moving.push(p);
+      return false;
     }); });
-    candidate[target] = candidate[target].concat(moved);
-    var error = FB.drawError(candidate);
-    return error ? { error: error } : { teams: candidate, movedIds: moved.map(function (p) { return p.id; }) };
+    candidate[target] = candidate[target].concat(moving);
+    return { teams: candidate, movedIds: moving.map(function (p) { return p.id; }) };
   };
 
   // Retain existing assignments where the latest attendance still fits.

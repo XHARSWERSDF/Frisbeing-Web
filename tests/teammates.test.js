@@ -184,9 +184,14 @@ test('server draw attaches only attending teammates and persists their Fris Inde
   assert.ok(result.teams.some(team => [1, 2].every(i => team.some(p => p.id === f.users[i].id))));
   assert.deepEqual(result.teams.map(FB.score).sort((a, b) => a - b), [7, 9]);
   assert.equal(f.saved().games[today].draw.teams.flat().filter(p => p.teammateGroupId).length, 2);
+  const source = result.teams.findIndex(team => team.some(p => p.id === f.users[1].id));
+  const moved = await f.api(0, 'PUT', `/game/${today}/assignment`, { id: f.users[1].id, team: 1 - source });
+  assert.ok(moved.teams[1 - source].some(p => p.id === f.users[1].id));
+  assert.ok(moved.teams[1 - source].some(p => p.id === f.users[2].id), 'attending teammate moves with them');
+  assert.equal(moved.drawn, false);
 });
 
-test('preview draw uses registered teammates, ignores absentees, and rejects invalid drag moves', async () => {
+test('preview draw uses registered teammates and allows unrestricted private draft moves', async () => {
   const FB = require('../assets/engine.js');
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const people = ['A', 'A', 'I', 'B', 'B', 'U'].map((tier, i) => ({ id: 'p' + i, name: 'Person ' + i, tier, gender: '', position: 'c' }));
@@ -197,7 +202,14 @@ test('preview draw uses registered teammates, ignores absentees, and rejects inv
   const result = await api(1, 'POST', `/game/${today}/draw`, { n: 2 });
   assert.deepEqual(Array.from(result.teams.map(FB.score)).sort((a, b) => a - b), [7, 9]);
   const source = result.teams.findIndex(team => team.some(p => p.id === 'p1'));
-  await assert.rejects(api(1, 'PUT', `/game/${today}/assignment`, { id: 'p1', team: 1 - source }));
+  const moved = await api(1, 'PUT', `/game/${today}/assignment`, { id: 'p1', team: 1 - source });
+  assert.equal(moved.drawn, false);
+  assert.equal(moved.hasDraft, true);
+  assert.ok(moved.teams[1 - source].some(p => p.id === 'p1'));
+  assert.ok(moved.teams[1 - source].some(p => p.id === 'p2'), 'attending teammate moves with them');
   const after = await api(1, 'GET', `/game?date=${today}`);
-  assert.equal(JSON.stringify(after.teams), JSON.stringify(result.teams));
+  assert.ok(after.teams[1 - source].some(p => p.id === 'p1'));
+  const memberView = await api(0, 'GET', `/game?date=${today}`);
+  assert.equal(memberView.drawn, false);
+  assert.ok(!('teams' in memberView));
 });

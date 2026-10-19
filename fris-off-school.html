@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fris Off School &middot; FRISBEING UF</title>
+<meta name="theme-color" content="#4A1209">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="assets/monogram.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap">
+<link rel="stylesheet" href="assets/brand.css?v=191">
+</head>
+<body class="fris-off-school-body">
+<div class="wrap">
+  <nav class="nav">
+    <div class="mark"><img src="assets/monogram.png" alt=""><div class="mark-copy"><span>FRISBEING UF</span><small class="mark-est">Est. 2022</small></div></div>
+    <a class="lnk" href="index.html">Home</a>
+    <a class="lnk" id="gameNav" href="sort.html">Game</a>
+    <a class="lnk" id="membershipNav" href="roster.html" hidden>Member</a>
+    <a class="lnk" id="accountNav" href="admin.html">Account</a><div class="nav-member-tools" id="memberTools" hidden><a class="lnk" href="gearhub.html">GearHub</a><a class="lnk" href="fris-off-school.html" aria-current="page">Fris Off School</a></div>
+  </nav>
+  <main class="fris-off-school-page">
+    <section class="fris-off-school-card" aria-labelledby="frisOffSchoolTitle">
+      <img class="fris-off-school-logo" src="assets/monogram.png" alt="Frisbeing UF">
+      <h1 class="fris-off-school-title" id="frisOffSchoolTitle"><span>Frisbeing</span><span>UFever</span></h1>
+      <div class="fris-off-school-qr-frame">
+        <img class="fris-off-school-qr" src="assets/fris-off-school-qr.png" alt="Fris Off School WeChat QR code">
+      </div>
+      <p class="fris-off-school-scan">Scan to connect</p>
+      <div class="fris-off-school-admin" id="frisOffSchoolAdmin" hidden>
+        <input id="frisOffSchoolQrInput" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+        <button class="fris-off-school-replace" id="frisOffSchoolReplace" type="button">Replace QR code</button>
+        <p class="fris-off-school-status" id="frisOffSchoolStatus" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+  </main>
+</div>
+<script src="assets/server-config.js"></script>
+<script src="assets/auth-config.js"></script>
+<script src="assets/auth.js?v=3"></script>
+<script src="assets/teammate-rules.js?v=1"></script>
+<script src="assets/preview-mode.js?v=29"></script>
+<script src="assets/navigation.js?v=13"></script>
+<script src="assets/fris-off-school.js?v=1"></script>
+<script src="assets/motion.js?v=104"></script>
+<script src="assets/pwa.js?v=2"></script>
+</body>
+</html>

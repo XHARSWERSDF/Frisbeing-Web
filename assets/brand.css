@@ -724,12 +724,15 @@ textarea::placeholder, input::placeholder { color: #4E6459; }
 .team {
   background: var(--pitch); border: 1px solid var(--line); padding: 20px 20px 22px;
 }
+.teams-grid .team { border-color: transparent; }
 
 .team-hd {
   display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 10px 18px;
   border-bottom: 1px solid var(--line); padding-bottom: 11px; margin-bottom: 13px;
 }
 .team-hd .nm { font-family: var(--f-display); font-size: 27px; color: var(--chalk); transform: skewX(-9deg); text-transform: uppercase; }
+.team-hd .team-index { display: none; margin-left: auto; color: var(--silver); font: 500 12px/1 var(--f-body); letter-spacing: .02em; white-space: nowrap; }
+.indexes-on .team-hd .team-index { display: inline; }
 .team-meta { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 18px; }
 .team-hd .ct, .team-hd .team-positions { font-family: var(--f-body); font-size: 13px; font-weight: 500; letter-spacing: 0; color: var(--silver); }
 .team.drop-target { border-color: var(--chalk); background: var(--field); box-shadow: inset 0 0 0 2px var(--chalk); }
@@ -768,6 +771,9 @@ textarea::placeholder, input::placeholder { color: #4E6459; }
 .tiers-toggle[aria-pressed="true"] { color: var(--silver); }
 .tiers-toggle[aria-pressed="true"] .box { background: var(--silver); border-color: var(--silver); }
 .tiers-toggle:focus-visible { outline: 2px solid var(--silver); outline-offset: 2px; }
+.tier-index-toggles { display: flex; flex-direction: column; align-items: center; }
+.tier-index-toggles .tiers-toggle { margin-top: 12px; }
+.tier-index-toggles .tiers-toggle + .tiers-toggle { margin-top: 2px; }
 
 /* ------------------------------------------------------- roster table -- */
 
@@ -812,10 +818,11 @@ textarea::placeholder, input::placeholder { color: #4E6459; }
 .member:not(:has(.position-buttons)) { grid-template-columns: 1fr; }
 .position-badge { font-family: var(--f-mono); font-size: 10px; color: var(--silver); }
 .position-badge { margin-left: auto; }
-.assignment-row { flex-direction: column; align-items: stretch !important; padding: 8px 0; border-bottom: 1px solid var(--line); }
-.assignment-row[draggable="true"] { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.assignment-row { flex-direction: column; align-items: stretch !important; padding: 8px 0; }
+.assignment-row.teammate-unit { gap: 8px; padding: 10px 12px; border: 1px solid var(--line); background: rgba(255,255,255,.025); }
+.assignment-row[data-drag-player-id] { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
 .assignment-drag-preview { position: fixed; z-index: 10000; pointer-events: none; padding: 10px 16px; background: var(--pitch); color: var(--chalk); border: 1px solid var(--chalk); font-family: var(--f-body); box-shadow: 0 4px 16px rgba(0,0,0,.3); }
-.assignment-row[draggable="true"]:active { cursor: grabbing; }
+.assignment-row[data-drag-player-id]:active { cursor: grabbing; }
 .assignment-row.dragging { opacity: .45; }
 .assignment-name { display: flex; align-items: center; gap: 8px; overflow-wrap: anywhere; }
 .assignment-controls { display: flex; gap: 6px; }
@@ -1656,4 +1663,150 @@ body.is-public .head.public-only { display: block; }
 @media (max-width: 720px) {
   .member.account:not(:has(.position-buttons)) { grid-template-columns: minmax(0, 1fr) auto auto; }
   .member.account .del { grid-column: auto; }
+}
+
+/* Fris Off School --------------------------------------------------------- */
+.fris-off-school-body {
+  height: 100vh;
+  height: 100svh;
+  overflow: hidden;
+  color: #fff7eb;
+  background: #e83b1f;
+}
+.fris-off-school-body #damask,
+.fris-off-school-body .scroll-art,
+.fris-off-school-body .page-background-tint { display: none !important; }
+.fris-off-school-body .wrap {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100svh;
+  overflow: hidden;
+}
+.fris-off-school-body .nav {
+  background: rgba(255, 249, 244, .96);
+  border-color: rgba(205, 48, 21, .24);
+  backdrop-filter: blur(14px);
+}
+.fris-off-school-body .mark-copy span,
+.fris-off-school-body .lnk { color: #e13c1d !important; }
+.fris-off-school-body .lnk:hover,
+.fris-off-school-body .lnk[aria-current="page"] {
+  color: #8f160b !important;
+  border-bottom-color: #8f160b !important;
+}
+.fris-off-school-body .lnk::after { background: #e43b1d; }
+.fris-off-school-body .mark > img {
+  filter: brightness(0) saturate(100%) invert(28%) sepia(96%) saturate(2974%) hue-rotate(352deg) brightness(98%) contrast(91%);
+}
+.fris-off-school-body .mark-est { color: #e13c1d; }
+.fris-off-school-page {
+  position: relative;
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  place-items: start center;
+  overflow: hidden;
+  padding: clamp(10px, 2.5vh, 24px) 24px 8px;
+  background: #e83b1f;
+}
+.fris-off-school-page::before,
+.fris-off-school-page::after {
+  content: "";
+  position: absolute;
+  width: min(48vw, 620px);
+  aspect-ratio: 1;
+  border: 1px solid rgba(255, 244, 226, .2);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.fris-off-school-page::before { top: -30%; left: -15%; }
+.fris-off-school-page::after { right: -18%; bottom: -38%; }
+.fris-off-school-card {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 720px);
+  max-height: 100%;
+  padding: 0 clamp(18px, 5vw, 54px) 8px;
+  text-align: center;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.fris-off-school-logo {
+  display: block;
+  width: clamp(54px, 13vh, 104px);
+  height: auto;
+  margin: 0 auto 5px;
+  filter: sepia(.18) saturate(.55) brightness(1.55);
+}
+.fris-off-school-title {
+  margin: 0;
+  color: #fff8ed;
+  font: italic 700 clamp(30px, 6.6vh, 58px)/.91 Georgia, 'Times New Roman', serif;
+  letter-spacing: -.045em;
+  text-transform: none;
+}
+.fris-off-school-title span { display: block; }
+.fris-off-school-rule {
+  width: 58px;
+  height: 3px;
+  margin: 28px auto 30px;
+  background: #fff0dd;
+}
+.fris-off-school-qr-frame {
+  width: min(34vh, 280px, 72vw);
+  margin: clamp(8px, 1.5vh, 14px) auto 0;
+  padding: 7px;
+  background: #fff;
+  box-shadow: 0 18px 44px rgba(25, 2, 0, .38);
+}
+.fris-off-school-qr {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.fris-off-school-scan {
+  margin: clamp(5px, 1vh, 10px) 0 0;
+  color: #ffe2ce;
+  font: 500 14px/1.5 var(--f-body);
+  letter-spacing: .08em;
+}
+.fris-off-school-admin { margin-top: clamp(5px, 1vh, 10px); }
+.fris-off-school-replace {
+  appearance: none;
+  min-width: 168px;
+  padding: 8px 15px;
+  border: 1px solid rgba(255, 247, 235, .84);
+  color: #a51e0e;
+  background: #fff7eb;
+  font: 700 13px/1.2 var(--f-body);
+  cursor: pointer;
+}
+.fris-off-school-replace:hover { color: #fff7eb; background: #8f160b; }
+.fris-off-school-replace:focus-visible { outline: 3px solid #fff7eb; outline-offset: 4px; }
+.fris-off-school-replace:disabled { opacity: .58; cursor: wait; }
+.fris-off-school-status { min-height: 1.3em; margin: 4px 0 0; color: #ffe2ce; font-size: 12px; }
+@media (max-width: 720px) {
+  .fris-off-school-page { padding: 10px 12px 6px; }
+  .fris-off-school-card { padding: 0 12px 5px; }
+  .fris-off-school-title { font-size: clamp(28px, 8.5vh, 52px); }
+  .fris-off-school-qr-frame { width: min(34vh, 245px, 68vw); }
+}
+@media (max-height: 620px) {
+  .fris-off-school-logo { width: clamp(45px, 10vh, 66px); margin-bottom: 2px; }
+  .fris-off-school-title { font-size: clamp(25px, 5.8vh, 36px); }
+  .fris-off-school-qr-frame { width: min(31vh, 178px, 56vw); margin-top: 5px; padding: 5px; }
+  .fris-off-school-scan { margin-top: 3px; font-size: 11px; }
+  .fris-off-school-admin { margin-top: 3px; }
+  .fris-off-school-replace { min-width: 142px; padding: 6px 12px; font-size: 11px; }
+  .fris-off-school-status { margin-top: 2px; font-size: 10px; }
+}
+@media (max-width: 980px) {
+  .fris-off-school-body .nav { gap: 10px; padding-inline: 18px; }
+  .fris-off-school-body .nav .mark-copy {
+    position: absolute; width: 1px; height: 1px;
+    overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+  .fris-off-school-body .nav a.lnk { font-size: 10px; letter-spacing: .01em; }
 }
