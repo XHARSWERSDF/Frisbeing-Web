@@ -384,8 +384,9 @@ labels, Plus Jakarta Sans for body.
 
 The separate **Photos** page (`photos.html`) contains all 42 optimized club
 photos. **All photos** lays them out in a scrollable grid; **Conveyor belt**
-fills the viewport with three vertical belts: left and right upward, middle
-downward, with black separators and a shared pause control. **All photos** or
+shows a full-width gallery with three vertical belts: left and right upward,
+middle downward, with black separators and a shared pause control. The page
+scrolls normally, keeping its navigation bar and footer. **All photos** or
 the Escape key returns to the grid. The selected view
 is remembered in this browser. Reduced-motion preferences disable automatic
 movement. `assets/home-gallery/manifest.json` records the source filenames.

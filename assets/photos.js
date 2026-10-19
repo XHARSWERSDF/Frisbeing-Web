@@ -1,4 +1,4 @@
-/* Browse one collection, or fill the viewport with three alternating belts. */
+/* Browse one collection, or show three alternating belts in the page. */
 (function () {
   "use strict";
   var gallery = document.querySelector('.photo-gallery');
@@ -52,6 +52,8 @@
   }
   function fit() {
     if (mode !== 'conveyor') return;
+    var nav = document.querySelector('.nav');
+    gallery.style.setProperty('--photos-nav-height', (nav ? nav.offsetHeight : 0) + 'px');
     tracks.forEach(function (track) {
       // Each sequence travels once at a steady 30 pixels per second.
       track.style.setProperty('--photo-cycle', Math.max(1, track.firstElementChild.offsetHeight / 30) + 's');
@@ -96,6 +98,10 @@
       visible = entries[0].isIntersecting;
       update();
     }).observe(gallery);
+  }
+  if (window.ResizeObserver) {
+    var nav = document.querySelector('.nav');
+    if (nav) new ResizeObserver(fit).observe(nav);
   }
   window.addEventListener('resize', fit, { passive: true });
   document.addEventListener('visibilitychange', update);

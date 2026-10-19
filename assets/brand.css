@@ -1807,14 +1807,14 @@ body.is-public .head.public-only { display: block; }
 .photo-gallery[data-view="grid"] .photo-conveyor-group { columns: 3; column-gap: 12px; }
 .photo-gallery[data-view="grid"] figure { break-inside: avoid; margin-bottom: 12px; }
 .photo-belts { display: none; }
-body.is-photo-conveyor { overflow: hidden; }
-.is-photo-conveyor .nav, .is-photo-conveyor .photos-heading, .is-photo-conveyor .site-footer { display: none; }
-.is-photo-conveyor .photos-view-switch {
-  position: fixed; z-index: 61; top: max(16px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
-  margin: 0; width: max-content; max-width: calc(100% - 32px); background: rgba(8,21,15,.94); box-shadow: 0 8px 30px rgba(0,0,0,.3);
+.is-photo-conveyor .photos-page { padding-inline: 0; padding-bottom: 0; }
+.is-photo-conveyor .photos-page > .inner { max-width: none; }
+.is-photo-conveyor .photos-heading { margin-inline: var(--pad); }
+.is-photo-conveyor .photos-view-switch { margin-inline: var(--pad); max-width: calc(100% - var(--pad) * 2); }
+.photo-gallery[data-view="conveyor"] {
+  position: relative; width: 100%; height: calc(100svh - var(--photos-nav-height, 74px)); min-height: 360px;
+  background: #000; overflow: hidden;
 }
-.is-photo-conveyor .photos-view-switch button { flex: 0 1 auto; white-space: nowrap; }
-.photo-gallery[data-view="conveyor"] { position: fixed; inset: 0; z-index: 60; background: #000; overflow: hidden; }
 .photo-gallery[data-view="conveyor"] > .photo-conveyor { display: none; }
 .photo-gallery[data-view="conveyor"] .photo-belts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; width: 100%; height: 100%; }
 .photo-belt { min-width: 0; height: 100%; overflow: hidden; }
@@ -1825,7 +1825,7 @@ body.is-photo-conveyor { overflow: hidden; }
 .photo-belt:nth-child(2) .photo-belt-track { animation-direction: reverse; }
 .photo-gallery.is-active:not(.is-paused)[data-view="conveyor"] .photo-belt-track { animation-play-state: running; }
 .photo-rail-toggle {
-  position: fixed; z-index: 61; bottom: max(16px, env(safe-area-inset-bottom)); left: 16px;
+  position: absolute; z-index: 2; bottom: 16px; left: 16px;
   padding: 12px 16px; border: 1px solid rgba(192,192,191,.6); border-radius: 3px;
   color: #f5f7f1; background: rgba(8,21,15,.94); font: 600 12px/1.4 var(--f-body); cursor: pointer;
 }
