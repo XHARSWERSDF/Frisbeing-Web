@@ -378,3 +378,16 @@ Colours are sampled from the poster and brochure: ink `#08150F`, field
 `#0E2018`, pitch `#11261D`, brand green `#1C4734`, silver `#C0C0BF`, chalk
 white. Type is Anton (skewed −9° to match the poster italic), Space Mono for
 labels, Plus Jakarta Sans for body.
+
+
+## Home gallery and motion
+
+The Home photo column contains 42 optimized club photos. Its two identical
+sequences loop upward with black separators; **Pause photos** stops the stream.
+On phones it moves below the text. Reduced-motion preferences disable its
+animation. `assets/home-gallery/manifest.json` records the source filenames.
+
+The original cover photo wall remains, with staggered photo entrances and a
+logo/title reveal. The dim damask beneath it scrolls at 22% of page speed; the
+cover fades over scroll distance. The footer's game placard uses the supplied
+action photograph. Idle, hover and draw animations compose on the sorting disc.

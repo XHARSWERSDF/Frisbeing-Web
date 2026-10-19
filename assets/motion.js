@@ -7,15 +7,19 @@
 
   var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  /* ---- photo-wall background -------------------------------------------
-     Build a tiled photo booth wall behind the site content. */
-
+  /* ---- original photo wall + restored damask ----------------------------
+     Keep Home's photo collage as the opening layer. The polished pattern
+     appears below the photo cover and drifts at 22% of the scroll distance. */
+  var pattern = document.createElement("div");
+  pattern.id = "club-pattern";
+  pattern.setAttribute("aria-hidden", "true");
+  document.body.insertBefore(pattern, document.body.firstChild);
   var damask = document.getElementById("damask");
   if (!damask) {
     damask = document.createElement("div");
     damask.id = "damask";
     damask.setAttribute("aria-hidden", "true");
-    document.body.insertBefore(damask, document.body.firstChild);
+    document.body.insertBefore(damask, pattern.nextSibling);
   }
   var hero = document.querySelector('.hero');
   var backgroundPhotos = [
@@ -40,7 +44,10 @@
         img.alt = "";
         img.setAttribute("aria-hidden", "true");
         img.decoding = "async";
+        img.style.setProperty('--cover-order', Math.min(damask.children.length, 8));
+        img.addEventListener('load', function () { this.classList.add('cover-photo-ready'); }, { once: true });
         damask.appendChild(img);
+        if (img.complete && img.naturalWidth) img.classList.add('cover-photo-ready');
       }
     }
     fitPhotoWall();
@@ -73,16 +80,7 @@
 
   var heroContent = hero && hero.querySelector('.inner');
   var artReady = false;
-  var art = document.createElement('div');
-  art.className = 'scroll-art';
-  art.setAttribute('aria-hidden', 'true');
-  var contour = document.createElement('canvas');
-  contour.className = 'scroll-art-contours';
-  art.appendChild(contour);
-  document.body.insertBefore(art, damask);
-
-  // A single backdrop renderer serves Home and all three content pages.
-  // Only Home mounts the white foreground canvas and interactive details.
+  // Home retains its photo wall and brand foreground above the pattern.
   var brand = document.createElement('canvas');
   var details;
   var detailSources = [];
@@ -114,11 +112,6 @@
         window.location.assign(destination);
       });
     }
-  } else {
-    var tint = document.createElement('div');
-    tint.className = 'page-background-tint';
-    tint.setAttribute('aria-hidden', 'true');
-    document.body.insertBefore(tint, damask);
   }
 
   function positionDetails() {
@@ -156,14 +149,10 @@
     document.body.appendChild(layout);
     crest = layout.querySelector('.crest');
     artTitles = [layout.querySelector('h1.display'), layout.querySelector('.hero-sub')];
-  } else {
-    // Content pages use only the emblem, with no Home text or scroll cue.
-    crest = new Image();
-    crest.src = 'assets/monogram.png';
   }
 
-  function renderContours() {
-    if (!crest.complete || !crest.naturalWidth) return;
+  function renderBrand() {
+    if (!hero || !crest.complete || !crest.naturalWidth) return;
     if (layout) {
       var nav = document.querySelector('.nav');
       layout.style.top = (nav ? nav.offsetHeight : 0) + 'px';
@@ -172,27 +161,11 @@
       Math.sqrt(4000000 / (window.innerWidth * window.innerHeight)));
     var w = Math.round(window.innerWidth * scale);
     var h = Math.round(window.innerHeight * scale);
-    brand.width = contour.width = w;
-    brand.height = contour.height = h;
+    brand.width = w;
+    brand.height = h;
     var front = brand.getContext('2d');
     front.setTransform(scale, 0, 0, scale, 0, 0);
-    var box;
-    if (hero) {
-      box = crest.getBoundingClientRect();
-    } else {
-      // Center against the full viewport, independent of navigation or content.
-      var ratio = crest.naturalWidth / crest.naturalHeight;
-      var logoWidth = Math.min(Math.max(75, window.innerWidth * .12), 150,
-        window.innerHeight * .6 * ratio);
-      var logoHeight = logoWidth / ratio;
-      box = {
-        left: (window.innerWidth - logoWidth) / 2,
-        top: (window.innerHeight - logoHeight) / 2,
-        bottom: (window.innerHeight + logoHeight) / 2,
-        width: logoWidth,
-        height: logoHeight
-      };
-    }
+    var box = crest.getBoundingClientRect();
     if (document.body.dataset.backgroundEmblem !== 'false') {
       front.drawImage(crest, box.left, box.top, box.width, box.height);
     }
@@ -200,10 +173,10 @@
       var rect = source.getBoundingClientRect();
       var style = getComputedStyle(source);
       front.save();
-      front.font = style.fontWeight + ' ' + (parseFloat(style.fontSize) * .75) + 'px ' + style.fontFamily;
+      front.font = style.fontWeight + ' ' + parseFloat(style.fontSize) + 'px ' + style.fontFamily;
       front.textAlign = 'center';
       front.textBaseline = 'alphabetic';
-      if ('letterSpacing' in front) front.letterSpacing = (parseFloat(style.letterSpacing) * .75 || 0) + 'px';
+      if ('letterSpacing' in front) front.letterSpacing = (parseFloat(style.letterSpacing) || 0) + 'px';
       front.fillStyle = style.color;
       var text = source.textContent.trim().toUpperCase();
       var metrics = front.measureText(text);
@@ -216,94 +189,45 @@
       front.restore();
     });
 
-    // Keep the exact lockup as a crisp silhouette, but use a broad radial
-    // glow for the field so its changing letter contours do not leave marks.
-    var source = front.getImageData(0, 0, w, h);
-    var pixels = new ImageData(w, h);
-    var light = [228, 232, 206], dark = [13, 30, 22];
-    var top = box.top, bottom = box.bottom;
-    artTitles.forEach(function (title) {
-      var rect = title.getBoundingClientRect();
-      top = Math.min(top, rect.top);
-      bottom = Math.max(bottom, rect.bottom);
-    });
-    var focusX = window.innerWidth / 2;
-    var focusY = (top + bottom) / 2;
-    var spreadX = Math.max(260, box.width * 2.4);
-    var spreadY = Math.max(260, (bottom - top) * 1.5);
-    for (var i = 0; i < w * h; i++) {
-      var x = (i % w) / scale;
-      var y = Math.floor(i / w) / scale;
-      var radius = Math.sqrt(Math.pow((x - focusX) / spreadX, 2) + Math.pow((y - focusY) / spreadY, 2));
-      var t = 1 - Math.exp(-radius * 1.65);
-      var alpha = source.data[i * 4 + 3] / 255;
-      // A fraction of a channel of stable dither prevents 8-bit color
-      // quantization from appearing as faint lines on large displays.
-      var hash = Math.imul(i ^ (i >>> 13), 1274126177) >>> 0;
-      var noise = (hash / 4294967295 - .5) * .7;
-      for (var c = 0; c < 3; c++) {
-        var shade = light[c] + (dark[c] - light[c]) * t + noise * (1 - alpha);
-        pixels.data[i * 4 + c] = shade * (1 - alpha) + dark[c] * alpha;
-      }
-      pixels.data[i * 4 + 3] = 255;
-    }
-    contour.getContext('2d').putImageData(pixels, 0, 0);
-    if (!hero) return;
     positionDetails();
     artReady = true;
-    if (window.scrollY > 0 && heroReturnTrigger) {
-      heroHidden = heroReturnTrigger.getBoundingClientRect().top <= joinBottom();
-    }
     document.body.classList.add('brand-ready');
     updateHero();
   }
   var resizeTimer;
   window.addEventListener('resize', function () {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(renderContours, 120);
+    resizeTimer = setTimeout(renderBrand, 120);
   });
-  Promise.all([
-    hero && document.fonts ? document.fonts.ready : Promise.resolve(),
-    crest.decode ? crest.decode() : new Promise(function (resolve) {
-      if (crest.complete) resolve(); else crest.addEventListener('load', resolve, { once: true });
-    })
-  ]).then(renderContours).catch(function (error) {
-    console.error('Unable to prepare the brand background:', error);
-  });
-
-  // Switch when The Sessions first overlaps the JOIN button; reverse that
-  // state only after the section clears the button again while scrolling up.
-  var heroReturnTrigger = document.querySelector('.hero + .band-field') || document.querySelector('.band-pitch');
-  var heroLastY = window.scrollY;
-  var joinSource = hero && hero.querySelector('.hero-join');
-  function joinBottom() {
-    return joinMirror ? joinMirror.getBoundingClientRect().bottom : window.innerHeight * 2 / 3;
+  if (hero) {
+    Promise.all([
+      document.fonts ? document.fonts.ready : Promise.resolve(),
+      crest.decode ? crest.decode() : new Promise(function (resolve) {
+        if (crest.complete) resolve(); else crest.addEventListener('load', resolve, { once: true });
+      })
+    ]).then(renderBrand).catch(function (error) {
+      console.error('Unable to prepare the brand foreground:', error);
+    });
   }
-  var heroHidden = false;
-  var heroReturning = false;
+
+  // Fade the cover across 65% of a viewport instead of switching it off
+  // in 200 ms. Deriving opacity from scroll also makes reversing seamless.
+  var heroReturnTrigger = document.getElementById('sessions') || document.querySelector('.band-pitch');
   function updateHero() {
     if (!heroContent) return;
     var y = Math.max(0, window.scrollY);
     document.body.classList.toggle('scroll-cue-hidden', y > 0);
-    var delta = y - heroLastY;
-    heroLastY = y;
     var triggerTop = heroReturnTrigger ? heroReturnTrigger.getBoundingClientRect().top : Infinity;
-    var buttonBottom = joinBottom();
-    if (delta > 0 && triggerTop <= buttonBottom) {
-      heroHidden = true;
-      heroReturning = false;
-    } else if (delta < 0 && triggerTop >= buttonBottom) {
-      if (heroHidden) heroReturning = true;
-      heroHidden = false;
-    }
-    if (y === 0) {
-      if (heroHidden) heroReturning = true;
-      heroHidden = false;
-    }
-    document.body.classList.toggle('hero-returning', artReady && heroReturning);
-    document.body.classList.toggle('hero-dismissed', artReady && heroHidden);
-    heroContent.inert = artReady && heroHidden;
-    if (hero) details.inert = artReady && heroHidden;
+    var buttonBottom = joinMirror ? joinMirror.getBoundingClientRect().bottom : window.innerHeight * 2 / 3;
+    var fadeDistance = Math.max(360, window.innerHeight * .65);
+    var progress = Math.max(0, Math.min(1, (buttonBottom - triggerTop) / fadeDistance));
+    if (y === 0) progress = 0;
+    if (reduce) progress = progress > 0 ? 1 : 0;
+    document.body.style.setProperty('--hero-opacity', (1 - progress).toFixed(3));
+    document.body.classList.toggle('hero-dismissed', artReady && progress === 1);
+    // Keep the fading JOIN layer from catching clicks over the next section.
+    heroContent.inert = artReady && progress >= .5;
+    if (details) details.inert = artReady && progress >= .5;
   }
 
   if (reduce) {
@@ -327,7 +251,10 @@
     var selector = [
       ".head > *", ".cards > .card", ".steps-list > .step", ".sessions > .sess",
       ".photo", ".chips > .chip-o", ".panel", ".sorter", ".cal-top", ".cal-card",
-      ".day-panel", ".member-list", ".tonight > *", ".photo-band .over .inner > *"
+      ".day-panel", ".member-list", ".tonight > *", ".photo-band .over .inner > *",
+      ".about-copy > p", ".footer-invite .eyebrow", ".footer-invite h2", ".footer-invite p", ".footer-invite .btn",
+      ".footer-grid h3", ".footer-brand-link", ".footer-brand > p", ".footer-links > a",
+      ".footer-contact > p", ".footer-contact > a", ".footer-bottom > p"
     ].join(",");
     var seen = [];
     if (root.closest(".photo-band")) selector += ", :scope > *";
@@ -336,12 +263,21 @@
       seen.push(el);
       el.classList.add("motion-item");
       el.style.setProperty("--motion-order", Math.min(seen.length - 1, 9));
-      if (el.matches(".display, .cal-month")) el.classList.add("motion-title");
+      if (el.matches(".display, .cal-month, .footer-invite h2")) el.classList.add("motion-title");
       else if (el.matches(".eyebrow")) el.classList.add("motion-eyebrow");
       else if (el.matches(".card, .step, .panel, .sorter, .cal-card, .day-panel")) el.classList.add("motion-card");
       else if (el.matches(".photo")) el.classList.add("motion-photo", seen.length % 2 ? "motion-left" : "motion-right");
       else if (el.matches(".chip-o")) el.classList.add("motion-pop");
       else el.classList.add("motion-copy");
+    });
+  }
+
+  // Footer groups enter independently, including on narrow screens.
+  var footer = document.querySelector('.site-footer');
+  if (footer) {
+    footer.classList.add('reveal-on', 'motion-ready');
+    Array.prototype.forEach.call(footer.querySelectorAll('.footer-invite, .footer-grid > *, .footer-bottom'), function (group) {
+      group.classList.add('rv');
     });
   }
 
@@ -375,6 +311,8 @@
     document.body.classList.toggle("is-scrolled", y > 24);
     document.documentElement.style.setProperty("--scroll-kick", Math.max(-1, Math.min(1, (y - lastY) / 36)).toFixed(3));
     lastY = y;
+    // Move the repeat rather than the element: infinite tiling leaves no gaps.
+    pattern.style.backgroundPositionY = (-y * .22).toFixed(2) + "px";
     driftPhotos();
     var trigger = window.innerHeight * 0.88;
     for (var i = pending.length - 1; i >= 0; i--) {

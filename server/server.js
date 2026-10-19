@@ -356,6 +356,23 @@ function runsTheClub(who) {
   return !!who && (who.role === "leader" || who.role === "admin");
 }
 
+/* Bags belong to accounts, never to a browser or a caller-supplied user ID. */
+function gearBagView(user) {
+  const saved = user.gearBag;
+  const items = db.gearProducts.flatMap((product) => {
+    const quantity = saved && saved.products && saved.products[product.id];
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) return [];
+    return [{ productId: product.id, name: product.name, price: product.price, quantity,
+      lineTotal: Math.round(product.price * 100) * quantity / 100 }];
+  });
+  return {
+    products: Object.fromEntries(items.map((item) => [item.productId, item.quantity])),
+    items, itemCount: items.reduce((sum, item) => sum + item.quantity, 0),
+    total: items.reduce((sum, item) => sum + Math.round(item.lineTotal * 100), 0) / 100,
+    updatedAt: saved ? saved.updatedAt : null
+  };
+}
+
 /* ------------------------------------------------------------ rate limit --
    In memory, per ACCOUNT - never per address. The whole school reaches the
    server from one public address, so counting by address would lock every
@@ -836,6 +853,38 @@ const server = http.createServer(async (req, res) => {
 
     if (route === "/gear-products" && req.method === "GET") {
       return send(res, 200, { products: db.gearProducts });
+    }
+
+    if (route === "/me/gear-bag" && ["GET", "PUT"].includes(req.method)) {
+      const who = whoIs(req);
+      if (!who) return send(res, 401, { error: "Sign in to view your bag." });
+      if (req.method === "PUT") {
+        const body = await readBody(req);
+        const products = body && body.products;
+        if (!products || typeof products !== "object" || Array.isArray(products) || Object.keys(products).length > db.gearProducts.length) {
+          return send(res, 400, { error: "Send a valid bag." });
+        }
+        for (const [id, quantity] of Object.entries(products)) {
+          const product = db.gearProducts.find((entry) => entry.id === id);
+          if (!product || !Number.isInteger(quantity) || quantity < 1 || quantity > 99) {
+            return send(res, 400, { error: "Choose available products and quantities from 1 to 99." });
+          }
+          const previous = who.user.gearBag && who.user.gearBag.products && who.user.gearBag.products[id] || 0;
+          if (product.isPreorder && quantity > previous) return send(res, 400, { error: "Coming-soon products cannot be added to a bag." });
+        }
+        who.user.gearBag = { products, updatedAt: Date.now() };
+        save();
+      }
+      return send(res, 200, gearBagView(who.user));
+    }
+
+    if (route === "/gear-bags" && req.method === "GET") {
+      const who = whoIs(req);
+      if (!runsTheClub(who)) return refuse(res, who);
+      const bags = db.users.map((user) => ({ userId: user.id, name: user.member || user.name || user.email,
+        email: user.email, ...gearBagView(user) }));
+      bags.sort((a, b) => b.itemCount - a.itemCount || a.name.localeCompare(b.name));
+      return send(res, 200, { bags });
     }
 
     /* --- sign in with Microsoft ----------------------------------------- */

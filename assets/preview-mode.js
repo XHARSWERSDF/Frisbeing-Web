@@ -176,11 +176,25 @@
     getData().teammateInvitations.push(invitation);
     return invitation;
   }
+  function previewBagView(d, id) {
+    var saved = d.gearBags && d.gearBags[id];
+    var items = [];
+    d.gearProducts.forEach(function (product) {
+      var quantity = saved && saved.products[product.id];
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) return;
+      items.push({ productId: product.id, name: product.name, price: product.price, quantity: quantity,
+        lineTotal: Math.round(product.price * 100) * quantity / 100 });
+    });
+    return { products: Object.fromEntries(items.map(function (item) { return [item.productId, item.quantity]; })),
+      items: items, itemCount: items.reduce(function (sum, item) { return sum + item.quantity; }, 0),
+      total: items.reduce(function (sum, item) { return sum + Math.round(item.lineTotal * 100); }, 0) / 100,
+      updatedAt: saved ? saved.updatedAt : null };
+  }
   function request(method, path, body) {
     return Promise.resolve().then(function () {
       var d = getData(), url = new URL(path, "https://preview.invalid"), route = url.pathname, result;
       if (method !== "GET" && role() === "guest") throw new Error("Sign in to use this action.");
-      if (method !== "GET" && (role() === "player" || role() === "guest") && !/\/rsvp$/.test(route) && route !== "/me/preferences" && route !== "/me/passion-star/seen" && route.indexOf("/me/teammate-invitations") !== 0 && route.indexOf("/me/teammate-group") !== 0) throw new Error("Switch to Admin or Admin Manager preview to use this control.");
+      if (method !== "GET" && (role() === "player" || role() === "guest") && !/\/rsvp$/.test(route) && route !== "/me/gear-bag" && route !== "/me/preferences" && route !== "/me/passion-star/seen" && route.indexOf("/me/teammate-invitations") !== 0 && route.indexOf("/me/teammate-group") !== 0) throw new Error("Switch to Admin or Admin Manager preview to use this control.");
       if (route === "/version") return { version: d.version, games: d.version };
       if (route === "/teammate-groups" && method === "GET") {
         if (role() !== "admin" && role() !== "leader") throw new Error("Only Admin and Admin Manager accounts can view teams.");
@@ -193,6 +207,30 @@
         }) };
       }
       if (route === "/gear-products" && method === "GET") return { products: d.gearProducts };
+      if (route === "/me/gear-bag" && ["GET", "PUT"].indexOf(method) >= 0) {
+        if (role() === "guest") throw new Error("Sign in to view your bag.");
+        if (!d.gearBags) d.gearBags = {};
+        if (method === "PUT") {
+          var bagProducts = body && body.products;
+          if (!bagProducts || typeof bagProducts !== "object" || Array.isArray(bagProducts)) throw new Error("Send a valid bag.");
+          Object.keys(bagProducts).forEach(function (id) {
+            var product = d.gearProducts.find(function (entry) { return entry.id === id; });
+            var count = bagProducts[id];
+            if (!product || !Number.isInteger(count) || count < 1 || count > 99) throw new Error("Choose available products and quantities from 1 to 99.");
+            var previous = d.gearBags[role()] && d.gearBags[role()].products[id] || 0;
+            if (product.isPreorder && count > previous) throw new Error("Coming-soon products cannot be added to a bag.");
+          });
+          d.gearBags[role()] = { products: Object.assign({}, bagProducts), updatedAt: Date.now() };
+          persist();
+        }
+        return previewBagView(d, role());
+      }
+      if (route === "/gear-bags" && method === "GET") {
+        if (role() !== "admin" && role() !== "leader") throw new Error("Only club admins can view member bags.");
+        var bags = d.accounts.map(function (account) { return Object.assign({ userId: account.id, name: account.member || account.name, email: account.email }, previewBagView(d, account.id)); });
+        bags.sort(function (a, b) { return b.itemCount - a.itemCount || a.name.localeCompare(b.name); });
+        return { bags: bags };
+      }
       if (route === "/gear-products" && method === "POST") {
         if (role() !== "admin" && role() !== "leader") throw new Error("Only Admin and Admin Manager accounts can add products.");
         var productName = String(body && body.name || "").trim();

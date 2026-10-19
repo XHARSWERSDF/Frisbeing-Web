@@ -53,6 +53,16 @@ Settings:
 On first run it seeds itself from the `roster.json` shipped with the website,
 so it starts with the squad already in it.
 
+### Run alongside another local preview
+
+```bash
+PREVIEW_PORT=8933 API_PORT=8081 node server/preview.cjs --demo
+```
+
+This serves the merged test drive at `http://localhost:8933`. Test accounts use
+an isolated temporary database. Signed-in users can open the Account page;
+the demo's **Switch account** link returns to the test account chooser.
+
 ## Who is who
 
 Roles come from the sign-up address, set at the top of `server.js`:
@@ -163,6 +173,26 @@ can add, edit, or remove products with `POST /gear-products`,
 `PUT /gear-products/:id`, and `DELETE /gear-products/:id`. Product images are
 optional; uploaded images are resized in the browser and stored as JPEG data
 URLs with the product record.
+
+GearHub bags are stored on each account in the data file and survive server
+restarts. `GET /me/gear-bag` returns only the caller's bag. `PUT /me/gear-bag`
+accepts `{ "products": { "club-frisbee": 2 } }` to replace it, or an empty
+`products` object to clear it. Quantities must be integers from 1 to 99.
+New additions of coming-soon products are rejected. A bag uses current catalog
+names and prices; removed products no longer appear. Bags are not submitted orders.
+
+`GET /gear-bags` is restricted to admins and the Admin Manager. It returns
+`{ bags: [{ userId, name, email, products, items, itemCount, total, updatedAt }] }`
+for all registered accounts, including empty bags. Each item includes
+`productId`, `name`, `price`, `quantity`, and `lineTotal`. Open **GearHub →
+Member bags**, expand a member, or search by name/email. Refresh fetches the
+latest saved bags. Regular members cannot access this endpoint.
+
+Older browser-only bags have no account identity. GearHub offers an explicit
+**Import my old bag from this browser** button when the signed-in account has
+never saved a bag. Importing attaches those available items to that account;
+old bags on other devices become visible after the member imports them there.
+Local UI previews keep separate bags for each preview role and never call the live API.
 
 `PUT /me/preferences` accepts `{ "preferredTeammates": ["Name", "Name"] }`
 and sends invitations to at most two roster members. The captain of a

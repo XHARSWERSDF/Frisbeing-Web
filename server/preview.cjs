@@ -5,13 +5,15 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { spawn } = require('node:child_process');
 const root = path.resolve(__dirname, '..');
+const previewPort = Number(process.env.PREVIEW_PORT || 8931);
+const apiPort = Number(process.env.API_PORT || 8080);
 const settings = { window: {} };
 vm.runInNewContext(fs.readFileSync(path.join(root, 'assets/auth-config.js'), 'utf8'), settings);
 const entra = settings.window.FBAuthConfig.entra;
-const demo = process.argv.includes('--demo') ? require('./demo.cjs')(root) : null;
+const demo = process.argv.includes('--demo') ? require('./demo.cjs')(root, { previewPort, apiPort }) : null;
 const backend = spawn(process.execPath, [path.join(__dirname, 'server.js')], {
   cwd: root,
-  env: { ...process.env, PORT: '8080', ENTRA_TENANT_ID: entra.tenantId, ENTRA_CLIENT_ID: entra.clientId, ...(demo ? demo.env : {}) },
+  env: { ...process.env, PORT: String(apiPort), ENTRA_TENANT_ID: entra.tenantId, ENTRA_CLIENT_ID: entra.clientId, ...(demo ? demo.env : {}) },
   stdio: 'inherit'
 });
 const mime = {
@@ -21,16 +23,13 @@ const mime = {
   '.webp': 'image/webp', '.woff2': 'font/woff2'
 };
 const preview = http.createServer(async (req, res) => {
-  const url = new URL(req.url, 'http://localhost:8931');
+  const url = new URL(req.url, 'http://localhost:' + previewPort);
   if (demo && await demo.handle(req, res, url)) return;
-  if (demo && url.pathname === '/admin.html') {
-    res.writeHead(302, { Location: '/__demo', 'Cache-Control': 'no-store' }); res.end(); return;
-  }
   if (demo && url.pathname === '/assets/auth-config.js') {
     res.writeHead(200, { 'Content-Type': mime['.js'], 'Cache-Control': 'no-store' }); res.end(demo.config); return;
   }
   if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
-    const proxy = http.request({ hostname: '127.0.0.1', port: 8080, path: req.url, method: req.method, headers: req.headers }, upstream => {
+    const proxy = http.request({ hostname: '127.0.0.1', port: apiPort, path: req.url, method: req.method, headers: req.headers }, upstream => {
       res.writeHead(upstream.statusCode, upstream.headers); upstream.pipe(res);
     });
     proxy.on('error', () => {
@@ -65,4 +64,4 @@ backend.on('error', error => { console.error(error.message); preview.close(); pr
 backend.on('exit', code => { preview.close(); process.exitCode = code || 0; });
 process.on('SIGTERM', stop);
 process.on('SIGINT', stop);
-preview.listen(8931, '127.0.0.1', () => console.log('Website preview: http://localhost:8931/' + (demo ? '__demo' : 'sort.html')));
+preview.listen(previewPort, '127.0.0.1', () => console.log('Website preview: http://localhost:' + previewPort + '/' + (demo ? '__demo' : 'sort.html')));

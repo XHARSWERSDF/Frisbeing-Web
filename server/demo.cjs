@@ -4,10 +4,11 @@ const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
 
-module.exports = function createDemo(root) {
+module.exports = function createDemo(root, { previewPort = 8931, apiPort = 8080 } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'frisbeing-demo-'));
   const roster = JSON.parse(fs.readFileSync(path.join(root, 'roster.json'), 'utf8'));
   const entries = [
+    ['leader', 'Harry Xu', 'harry.xu_27@tsinglan.org', 'Admin Manager'],
     ['admin', 'Justin He', 'justin.he_27@tsinglan.org', 'Admin'],
     ['handle', 'Robert Niu', 'demo.handle@tsinglan.org', 'Player · Handle · T1'],
     ['cutter', 'Eva Song', 'demo.cutter@tsinglan.org', 'Player · Cutter · T1'],
@@ -59,7 +60,7 @@ module.exports = function createDemo(root) {
     });</script></html>`;
 
   return {
-    env: { DATA_FILE: dataFile, ENTRA_TENANT_ID: tenant, ENTRA_CLIENT_ID: client, ENTRA_JWKS_URL: 'http://127.0.0.1:8931/__demo/keys', HOST: '127.0.0.1' },
+    env: { DATA_FILE: dataFile, ENTRA_TENANT_ID: tenant, ENTRA_CLIENT_ID: client, ENTRA_JWKS_URL: 'http://127.0.0.1:' + previewPort + '/__demo/keys', HOST: '127.0.0.1' },
     async handle(req, res, url) {
       if (!url.pathname.startsWith('/__demo')) return false;
       res.setHeader('Cache-Control', 'no-store');
@@ -77,7 +78,7 @@ module.exports = function createDemo(root) {
           for await (const chunk of req) { body += chunk; if (body.length > 1000) throw Error('Request too large'); }
           const account = accounts.find(a => a.id === JSON.parse(body).id);
           if (!account) throw Error('Choose a listed test account');
-          const upstream = await fetch('http://127.0.0.1:8080/api/login/microsoft', {
+          const upstream = await fetch('http://127.0.0.1:' + apiPort + '/api/login/microsoft', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken: sign(account) })
           });
           res.writeHead(upstream.status, { 'Content-Type': 'application/json' }); res.end(await upstream.text());
@@ -87,9 +88,10 @@ module.exports = function createDemo(root) {
       res.writeHead(404); res.end('Not found'); return true;
     },
     html(content) {
-      return content.toString().replace('assets/auth.js"', 'assets/auth.js?demo=' + kid + '"')
-        .replace('<script src="assets/pwa.js"></script>', '')
-        .replace('</body>', '<aside style="position:fixed;bottom:14px;right:14px;z-index:3000;padding:12px 16px;background:#f0c969;color:#15271d;font:13px system-ui;border-radius:4px">Local test data · <a href="/__demo" style="color:inherit;font-weight:bold">Switch account</a></aside></body>');
+      return content.toString()
+        .replace(/assets\/auth\.js(?:\?[^"]*)?"/g, 'assets/auth.js?demo=' + kid + '"')
+        .replace(/<script src="assets\/pwa\.js(?:\?[^"]*)?"><\/script>/, '')
+        .replace('</body>', '<aside style="position:fixed;bottom:14px;right:14px;z-index:3000;padding:12px 16px;background:#f0c969;color:#15271d;font:13px system-ui;border-radius:4px">Local test data · <a href="/__demo" style="color:inherit;font-weight:bold">Switch account</a></aside><script>if(location.pathname==="/admin.html"&&!(window.FBAuth&&FBAuth.user()))location.replace("/__demo");</script></body>');
     },
     auth(content) { return content.toString().replace(/window\.localStorage/g, 'window.sessionStorage'); },
     config: 'window.FBAuthConfig={entra:{tenantId:"' + tenant + '",clientId:"' + client + '"},emailDomain:"tsinglan.org",sessionDays:1};'
