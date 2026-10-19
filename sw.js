@@ -3,7 +3,7 @@
    The sorter has to work on a field with no signal, so the whole app shell is
    cached on install and served cache-first. Bump CACHE to ship an update.
    ========================================================================== */
-const CACHE = "frisbeing-v215";
+const CACHE = "frisbeing-v216";
 
 const SHELL = [
   "./",
@@ -48,6 +48,7 @@ const SHELL = [
   "./assets/icon-192.png",
   "./assets/icon-512.png",
   "./assets/photos/next-game.jpg",
+  "./assets/photos/club-on-the-field.jpg",
   "./assets/frisbeing-damask.png",
   "./assets/home-gallery/club-01.jpg",
   "./assets/home-gallery/club-02.jpg",
@@ -91,24 +92,24 @@ const SHELL = [
   "./assets/home-gallery/club-37.jpg",
   "./assets/home-gallery/club-36.jpg",
   "./assets/home-gallery/club-35.jpg",
-  "./assets/brand.css?v=215",
-  "./assets/server-config.js?v=215",
-  "./assets/engine.js?v=215",
-  "./assets/auth-config.js?v=215",
-  "./assets/auth.js?v=215",
-  "./assets/teammate-rules.js?v=215",
-  "./assets/preview-mode.js?v=215",
-  "./assets/navigation.js?v=215",
-  "./assets/motion.js?v=215",
-  "./assets/pwa.js?v=215",
-  "./assets/sort.js?v=215",
-  "./assets/profile.js?v=215",
-  "./assets/gearhub.js?v=215",
-  "./assets/home-gallery.js?v=215",
-  "./assets/admin.js?v=215",
-  "./assets/store.js?v=215",
-  "./assets/roster.js?v=215",
-  "./assets/accounts.js?v=215"
+  "./assets/brand.css?v=216",
+  "./assets/server-config.js?v=216",
+  "./assets/engine.js?v=216",
+  "./assets/auth-config.js?v=216",
+  "./assets/auth.js?v=216",
+  "./assets/teammate-rules.js?v=216",
+  "./assets/preview-mode.js?v=216",
+  "./assets/navigation.js?v=216",
+  "./assets/motion.js?v=216",
+  "./assets/pwa.js?v=216",
+  "./assets/sort.js?v=216",
+  "./assets/profile.js?v=216",
+  "./assets/gearhub.js?v=216",
+  "./assets/home-gallery.js?v=216",
+  "./assets/admin.js?v=216",
+  "./assets/store.js?v=216",
+  "./assets/roster.js?v=216",
+  "./assets/accounts.js?v=216"
 ];
 
 self.addEventListener("install", (e) => {

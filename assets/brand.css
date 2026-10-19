@@ -1741,7 +1741,7 @@ body.is-public .head.public-only { display: block; }
   .footer-bottom { margin-top: 32px; flex-direction: column; }
 }
 
-#sessions, #club, #why-ultimate { scroll-margin-top: 100px; }
+#sessions, #club, #why-ultimate, #photo-booth { scroll-margin-top: 100px; }
 
 
 /* Text moves like a throw: a short directional reveal, then a quiet rest.
@@ -1789,24 +1789,25 @@ body.is-public .head.public-only { display: block; }
 }
 
 /* ------------------------------------------------------ Home photo stream -- */
-.home-story {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(260px, 28vw, 360px);
-  column-gap: clamp(30px, 4.5vw, 64px);
-  max-width: calc(var(--maxw) + var(--pad) * 2);
-  margin: 0 auto;
-  padding: 0 var(--pad);
-  align-items: start;
+.club-field-photo { margin: 48px 0 0; }
+.club-field-photo img { width: 100%; height: auto; border: 3px solid #000; }
+.club-field-photo figcaption {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  padding-top: 28px; text-align: center;
+  color: var(--silver); font: 500 clamp(15px, 1.8vw, 21px)/1.5 var(--f-body);
 }
-.home-story-copy { min-width: 0; }
-.home-story-copy > section { padding-inline: 0; }
-.home-story-copy .why-cards { grid-template-columns: minmax(0, 1fr); }
+.club-field-signoff { color: var(--chalk); font: 400 clamp(38px, 6vw, 72px)/1 var(--f-display); transform: skewX(-9deg); }
+.photo-booth { border-top: 1px solid var(--line); }
+.photo-booth-layout { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: clamp(32px, 6vw, 80px); align-items: center; }
+.photo-booth-intro { min-width: 0; }
+.photo-booth-intro .head { margin-bottom: 0; }
+.photo-booth-intro .head p { margin: 24px 0 0; max-width: 30ch; color: var(--mist); line-height: 1.8; }
 .home-photo-rail {
   --photo-rail-top: 74px;
   --photo-cycle: 220s;
-  position: sticky;
-  top: var(--photo-rail-top);
-  height: calc(100svh - var(--photo-rail-top));
+  position: relative;
+  top: auto;
+  height: min(760px, calc(100svh - var(--photo-rail-top)));
   min-height: 320px;
   overflow: auto;
   isolation: isolate;
@@ -1848,11 +1849,11 @@ body.is-public .head.public-only { display: block; }
   to { transform: translate3d(0, -50%, 0); }
 }
 @media (max-width: 800px) {
-  .home-story { display: block; }
+  .photo-booth-layout { grid-template-columns: minmax(0, 1fr); }
   .home-photo-rail {
     position: relative; top: auto;
-    width: 100%; max-width: 480px; height: 480px;
-    margin: 0 auto 56px;
+    width: 100%; max-width: 560px; height: 480px;
+    margin: 0 auto;
   }
 }
 @media (prefers-reduced-motion: reduce) {
