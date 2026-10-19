@@ -3,11 +3,12 @@
    The sorter has to work on a field with no signal, so the whole app shell is
    cached on install and served cache-first. Bump CACHE to ship an update.
    ========================================================================== */
-const CACHE = "frisbeing-v216";
+const CACHE = "frisbeing-v217";
 
 const SHELL = [
   "./",
   "./index.html",
+  "./photos.html",
   "./sort.html",
   "./roster.html",
   "./profile.html",
@@ -48,7 +49,6 @@ const SHELL = [
   "./assets/icon-192.png",
   "./assets/icon-512.png",
   "./assets/photos/next-game.jpg",
-  "./assets/photos/club-on-the-field.jpg",
   "./assets/frisbeing-damask.png",
   "./assets/home-gallery/club-01.jpg",
   "./assets/home-gallery/club-02.jpg",
@@ -92,24 +92,24 @@ const SHELL = [
   "./assets/home-gallery/club-37.jpg",
   "./assets/home-gallery/club-36.jpg",
   "./assets/home-gallery/club-35.jpg",
-  "./assets/brand.css?v=216",
-  "./assets/server-config.js?v=216",
-  "./assets/engine.js?v=216",
-  "./assets/auth-config.js?v=216",
-  "./assets/auth.js?v=216",
-  "./assets/teammate-rules.js?v=216",
-  "./assets/preview-mode.js?v=216",
-  "./assets/navigation.js?v=216",
-  "./assets/motion.js?v=216",
-  "./assets/pwa.js?v=216",
-  "./assets/sort.js?v=216",
-  "./assets/profile.js?v=216",
-  "./assets/gearhub.js?v=216",
-  "./assets/home-gallery.js?v=216",
-  "./assets/admin.js?v=216",
-  "./assets/store.js?v=216",
-  "./assets/roster.js?v=216",
-  "./assets/accounts.js?v=216"
+  "./assets/brand.css?v=217",
+  "./assets/server-config.js?v=217",
+  "./assets/engine.js?v=217",
+  "./assets/auth-config.js?v=217",
+  "./assets/auth.js?v=217",
+  "./assets/teammate-rules.js?v=217",
+  "./assets/preview-mode.js?v=217",
+  "./assets/navigation.js?v=217",
+  "./assets/motion.js?v=217",
+  "./assets/pwa.js?v=217",
+  "./assets/sort.js?v=217",
+  "./assets/profile.js?v=217",
+  "./assets/gearhub.js?v=217",
+  "./assets/photos.js?v=217",
+  "./assets/admin.js?v=217",
+  "./assets/store.js?v=217",
+  "./assets/roster.js?v=217",
+  "./assets/accounts.js?v=217"
 ];
 
 self.addEventListener("install", (e) => {

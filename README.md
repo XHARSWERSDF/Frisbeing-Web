@@ -380,13 +380,13 @@ white. Type is Anton (skewed −9° to match the poster italic), Space Mono for
 labels, Plus Jakarta Sans for body.
 
 
-## Home gallery and motion
+## Photos and motion
 
-The Home **Photo Booth** section contains 42 optimized club photos. Its two
-identical sequences loop upward with black separators; **Pause photos** stops
-the stream. On phones it moves below the section heading. Reduced-motion
-preferences disable its animation. The club group photo appears beneath
-**Why ultimate**, with the caption “Come on up and down to the field! we fris”. `assets/home-gallery/manifest.json` records the source filenames.
+The separate **Photos** page (`photos.html`) contains all 42 optimized club
+photos. **All photos** lays them out in a scrollable grid; **Conveyor belt**
+loops them upward with black separators and a pause control. The selected view
+is remembered in this browser. Reduced-motion preferences disable automatic
+movement. `assets/home-gallery/manifest.json` records the source filenames.
 
 The original cover photo wall remains, with staggered photo entrances and a
 logo/title reveal. The dim damask beneath it scrolls at 22% of page speed; the
