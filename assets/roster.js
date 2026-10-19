@@ -4,7 +4,7 @@
 (function () {
   "use strict";
 
-  if (!(window.FBAuth && FBAuth.user()) && !(window.FBPreview && FBPreview.active())) {
+  if (!(window.FBAuth && FBAuth.user()) && !(window.FBPreview && FBPreview.signedIn && FBPreview.signedIn())) {
     window.location.replace("admin.html");
     return;
   }
@@ -23,8 +23,48 @@
       headingEl = el("squadHeading"),
       rosInput = el("rosterInput"),
       rosReport = el("rosterReport"),
-      addReport = el("addReport"),
-      backupReport = el("backupReport");
+      addReport = el("addReport");
+  var existingTeamsPanel = el("existingTeamsPanel");
+  var existingTeamsList = el("existingTeamsList");
+  var existingTeamsReport = el("existingTeamsReport");
+
+  function loadExistingTeams() {
+    if (!existingTeamsPanel || !isAdmin()) {
+      if (existingTeamsPanel) existingTeamsPanel.hidden = true;
+      return;
+    }
+    existingTeamsPanel.hidden = false;
+    var hadContent = existingTeamsList.children.length > 0;
+    if (!hadContent) existingTeamsList.innerHTML = '<div class="empty">Loading teams…</div>';
+    existingTeamsReport.innerHTML = "";
+    FBStore._request("/teammate-groups").then(function (data) {
+      var teams = Array.isArray(data.teams) ? data.teams : [];
+      existingTeamsList.innerHTML = "";
+      if (!teams.length) {
+        existingTeamsList.innerHTML = '<div class="empty">There are no teams yet.</div>';
+        return;
+      }
+      teams.forEach(function (team, index) {
+        var row = document.createElement("div");
+        row.className = "existing-team-row";
+        var title = document.createElement("span");
+        title.className = "existing-team-title";
+        title.textContent = "Team " + (index + 1);
+        var names = document.createElement("span");
+        names.className = "existing-team-members";
+        names.textContent = (team.members || []).map(function (member) { return member.name; }).join(" · ");
+        row.appendChild(title);
+        row.appendChild(names);
+        existingTeamsList.appendChild(row);
+      });
+    }).catch(function (err) {
+      if (!hadContent) existingTeamsList.innerHTML = "";
+      existingTeamsReport.innerHTML = '<div class="rep bad"><b>Could not load teams.</b> ' +
+        esc(err && err.message ? err.message : "The server did not respond.") + "</div>";
+    });
+  }
+
+  if (el("refreshExistingTeams")) el("refreshExistingTeams").addEventListener("click", loadExistingTeams);
 
   function esc(s) {
     return String(s).replace(/[&<>"]/g, function (c) {
@@ -113,7 +153,7 @@
       paint();
       return r;
     }, function (err) {
-      say(report || backupReport, [{ kind: "bad",
+      say(report || rosReport, [{ kind: "bad",
         html: "<b>Could not save.</b> " + esc(err && err.message ? err.message : "The server did not respond.") }]);
       throw err;
     });
@@ -131,8 +171,7 @@
       warn.hidden = !pending;
       if (pending) {
         warn.innerHTML = '<div class="rep warn"><b>These changes are only on this device.</b> ' +
-          'Press <b>Publish roster</b> below, then upload the downloaded file to the website ' +
-          'so the squad list updates for everyone.</div>';
+          'They will not appear to other members until the website roster is updated.</div>';
       }
     }
 
@@ -387,77 +426,25 @@
     if (e.key === "Enter") { e.preventDefault(); addOne(); }
   });
 
-  /* ------------------------------------------------------------ backup -- */
-
-  el("exportJson").addEventListener("click", function () {
-    var blob = new Blob([JSON.stringify(roster, null, 2)], { type: "application/json" });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement("a");
-    a.href = url;
-    a.download = "roster.json";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
-    say(backupReport, [{ html: "<b>Downloaded a list with " + roster.length + " members.</b> " +
-      "Upload this file to the website to make the update visible to everyone." }]);
-  });
-
-  el("importJson").addEventListener("change", function (ev) {
-    var file = ev.target.files && ev.target.files[0];
-    if (!file) return;
-    var fr = new FileReader();
-    fr.onload = function () {
-      var data;
-      try { data = JSON.parse(String(fr.result)); }
-      catch (e) {
-        say(backupReport, [{ kind: "bad", html: "<b>Could not read that file.</b> It is not valid JSON." }]);
-        return;
-      }
-      if (!Array.isArray(data)) {
-        say(backupReport, [{ kind: "bad", html: "<b>Unexpected file.</b> Expected a list of members." }]);
-        return;
-      }
-      var clean = data.filter(function (m) {
-        return m && typeof m.name === "string" && FB.TIERS.indexOf(m.tier) >= 0;
-      }).map(function (m) { return { name: m.name, tier: m.tier, gender: FB.parseGender(m.gender), position: FB.position(m) }; });
-      if (!clean.length) {
-        say(backupReport, [{ kind: "bad", html: "<b>No usable members in that file.</b>" }]);
-        return;
-      }
-      roster = clean;
-      refreshDisplayedTiers();
-      save();
-      say(backupReport, [{ html: "<b>Imported " + clean.length + " members.</b>" }]);
-    };
-    fr.readAsText(file);
-    ev.target.value = "";
-  });
-
-  el("clearRoster").addEventListener("click", function () {
-    if (!roster.length) {
-      say(backupReport, [{ kind: "warn", html: "The roster is already empty." }]);
-      return;
-    }
-    if (!window.confirm("Delete all " + roster.length + " members? This cannot be undone.")) return;
-    roster = [];
-    save();
-    say(backupReport, [{ kind: "warn", html: "<b>Roster cleared.</b>" }]);
-  });
-
   if (window.FBAuth) {
     FBAuth.applyBodyState();
     FBAuth.onChange(function () {
       roster = FBStore.getRoster();
       paint();
+      loadExistingTeams();
     });
   }
 
   FBStore.init().then(function () {
     roster = FBStore.getRoster();
     paint();
+    loadExistingTeams();
     FBStore.startSync();
   });
+
+  window.setInterval(function () {
+    if (document.visibilityState === "visible" && isAdmin()) loadExistingTeams();
+  }, 20000);
 
   /* Someone else added a member: fold it in without losing what is on screen. */
   FBStore.onChange(function (status) {

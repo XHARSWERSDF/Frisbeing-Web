@@ -24,7 +24,10 @@
   var currentMemberName = null;
   var profileRequest = 0;
   var teammateGroupState = null;
+  var respondingInvitation = false;
   var preferredActionTimer = null;
+  var passionStarState = null;
+  var passionStarOpening = false;
 
   function preferredRequest(method, path, body) {
     if (window.FBPreview && FBPreview.active()) return FBPreview.request(method, path, body);
@@ -64,7 +67,7 @@
     if (!currentUser()) { el("teammateArea").hidden = true; return; }
     el("teammateArea").hidden = false;
     el("teammateStatus").textContent = "Loading teammate info…";
-    preferredRequest("GET", "/me").then(function (data) {
+    return preferredRequest("GET", "/me").then(function (data) {
       if (request !== profileRequest || !currentUser()) return;
       var account = data.account || {};
       currentMemberName = account.member || null;
@@ -75,12 +78,33 @@
     });
   }
 
+  function autoShowPassionStar() {
+    if (!passionStarState || !passionStarState.unseen || passionStarOpening) return;
+    try { if (sessionStorage.getItem("frisbeing.wait-for-passion-profile-open") === "1") return; }
+    catch (ignore) { /* unavailable session storage should not block the award */ }
+    passionStarOpening = true;
+    preferredRequest("POST", "/me/passion-star/seen", {}).then(function (result) {
+      passionStarState.unseen = false;
+      if (window.FBNav && FBNav.updatePassionStarStatus) FBNav.updatePassionStarStatus(false);
+      if (!result.alreadySeen) el("passionStarDialog").showModal();
+    }).catch(function (error) {
+      passionStarOpening = false;
+      showPreferredActionStatus(error && error.message ? error.message : "Could not open your award.");
+    });
+  }
+
   function paintTeammateProfile(data) {
     var invitationsBox = el("teammateInvitations");
     var sentBox = el("teammateSent");
     var group = data.teammateGroup;
     var invitations = data.teammateInvitations || [];
     var sent = data.teammateInvitationsSent || [];
+    passionStarState = data.passionStar || { unlocked: false, unseen: false };
+    if (data.account && typeof data.account.attendanceCount === "number") {
+      el("attendanceCount").textContent = String(data.account.attendanceCount);
+    }
+    el("passionStarTitle").hidden = !passionStarState.unlocked;
+    if (window.FBNav && FBNav.updatePassionStarStatus) FBNav.updatePassionStarStatus(passionStarState.unseen);
     teammateGroupState = group;
     var memberList = el("preferredTeamMembers");
     memberList.innerHTML = "";
@@ -93,6 +117,7 @@
     if (window.FBNav && FBNav.updateInviteStatus) FBNav.updateInviteStatus(invitations.length > 0);
     el("preferredOpen").disabled = !!group && (!group.isLeader || group.members.length >= 3);
     el("teammateStatus").textContent = "";
+    autoShowPassionStar();
 
     if (group) {
       memberList.setAttribute("aria-label", "Teammate group members");
@@ -121,14 +146,17 @@
         var row = document.createElement("div");
         row.className = "teammate-invitation";
         var text = document.createElement("p");
-        text.textContent = invitation.inviterName + " invited you to team up.";
+        var inviteBack = invitation.kind === "invite-back";
+        text.textContent = inviteBack
+          ? invitation.inviterName + " wants to team up. Invite them to your team?"
+          : invitation.inviterName + " invited you to team up.";
         row.appendChild(text);
-        [ ["accept", "Accept"], ["decline", "Decline"] ].forEach(function (choice) {
+        [ ["accept", inviteBack ? "Invite to my team" : "Accept"], ["decline", "Decline"] ].forEach(function (choice) {
           var button = document.createElement("button");
           button.type = "button";
           button.className = "btn" + (choice[0] === "accept" ? " solid" : "");
           button.innerHTML = "<span>" + choice[1] + "</span>";
-          button.addEventListener("click", function () { respondToInvitation(invitation.id, choice[0]); });
+          button.addEventListener("click", function () { respondToInvitation(invitation, choice[0]); });
           row.appendChild(button);
         });
         invitationsBox.appendChild(row);
@@ -140,7 +168,7 @@
       sentBox.appendChild(sentHeading);
       sent.forEach(function (invitation) {
         var item = document.createElement("p");
-        item.textContent = invitation.memberName + " · waiting for a response";
+        item.textContent = invitation.memberName + " · " + (invitation.message || "Waiting for a response.");
         sentBox.appendChild(item);
       });
     }
@@ -156,13 +184,22 @@
     });
   }
 
-  function respondToInvitation(id, response) {
-    el("teammateStatus").textContent = response === "accept" ? "Joining the group…" : "Declining invitation…";
-    preferredRequest("POST", "/me/teammate-invitations/" + encodeURIComponent(id) + "/respond", { response: response }).then(function (data) {
+  function respondToInvitation(invitation, response) {
+    if (respondingInvitation) return;
+    respondingInvitation = true;
+    ++profileRequest;
+    el("teammateInvitations").querySelectorAll("button").forEach(function (button) { button.disabled = true; });
+    el("teammateStatus").textContent = response === "accept" ? "Updating invitation…" : "Declining invitation…";
+    preferredRequest("POST", "/me/teammate-invitations/" + encodeURIComponent(invitation.id) + "/respond", {
+      response: response, expectedKind: invitation.kind || "invite"
+    }).then(function (data) {
       paintTeammateProfile(data);
+      if (data.invitationAction === "invited-back") showPreferredActionStatus("Invitation sent. Waiting for them to accept.");
     }).catch(function (error) {
-      el("teammateStatus").textContent = error && error.message ? error.message : "Could not respond to invitation.";
-    });
+      return Promise.resolve(loadTeammateProfile()).then(function () {
+        el("teammateStatus").textContent = error && error.message ? error.message : "Could not respond to invitation.";
+      });
+    }).finally(function () { respondingInvitation = false; });
   }
 
   function paintPreferredList() {
@@ -252,6 +289,11 @@
     if (firstAction) window.setTimeout(function () { firstAction.focus({ preventScroll: true }); }, 250);
   });
 
+  el("passionStarClose").addEventListener("click", function () { el("passionStarDialog").close(); });
+  el("passionStarDialog").addEventListener("click", function (event) {
+    if (event.target === el("passionStarDialog")) el("passionStarDialog").close();
+  });
+
   el("preferredClose").addEventListener("click", function () { preferredDialog.close(); });
   preferredDialog.addEventListener("click", function (event) {
     if (event.target === preferredDialog) preferredDialog.close();
@@ -267,10 +309,11 @@
     var save = preferredMode === "group"
       ? preferredRequest("POST", "/me/teammate-invitations", { member: preferredSelected[0] })
       : preferredRequest("PUT", "/me/preferences", { preferredTeammates: preferredSelected });
-    save.then(function () {
+    save.then(function (data) {
       var sentCount = preferredSelected.length;
       preferredDialog.close();
-      showPreferredActionStatus(sentCount ? (sentCount === 1 ? "Invitation sent." : "Invitations sent.") : "Invitations updated.");
+      showPreferredActionStatus(data.notices && data.notices.length ? data.notices.join(" ") :
+        (sentCount ? (sentCount === 1 ? "Invitation sent." : "Invitations sent.") : "Invitations updated."));
       loadTeammateProfile();
     }).catch(function (error) {
       preferredStatus(error && error.message ? error.message : "Could not save your choices.");
@@ -342,7 +385,7 @@
 
   FBAuth.onChange(paint);
   window.setInterval(function () {
-    if (document.visibilityState !== "hidden" && currentUser()) loadTeammateProfile();
+    if (!respondingInvitation && document.visibilityState !== "hidden" && currentUser()) loadTeammateProfile();
   }, 15000);
 
   /* If we have just come back from Microsoft, finish the sign-in first, then

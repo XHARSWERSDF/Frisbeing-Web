@@ -1,6 +1,6 @@
 (function () {
   "use strict";
-  if ((!window.FBAuth || !FBAuth.user()) && !(window.FBPreview && FBPreview.active())) {
+  if ((!window.FBAuth || !FBAuth.user()) && !(window.FBPreview && FBPreview.signedIn && FBPreview.signedIn())) {
     window.location.replace("admin.html");
     return;
   }

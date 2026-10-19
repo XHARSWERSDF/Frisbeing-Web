@@ -8,7 +8,7 @@ const { spawn } = require('node:child_process');
 const net = require('node:net');
 const FB = require('../assets/engine.js');
 
-test('fair draw balances size, tiers, genders and positions; late picks preserve teams', () => {
+test('fair draw balances Fris Index, total size and gender; late picks preserve input', () => {
   const players = [];
   for (const tier of FB.TIERS) for (const gender of ['f', 'm', '']) for (const position of ['h', 'c']) {
     for (let i = 0; i < 3; i++) players.push({ name: `${tier}-${gender}-${position}-${i}`, tier, gender, position });
@@ -19,7 +19,8 @@ test('fair draw balances size, tiers, genders and positions; late picks preserve
     assert.equal(new Set(result.teams.flat().map(p => p.name)).size, players.length);
     const spread = values => Math.max(...values) - Math.min(...values);
     assert.ok(spread(result.teams.map(t => t.length)) <= 1);
-    for (const key of [...FB.TIERS, 'f', 'm', 'u', 'h', 'c']) {
+    assert.ok(spread(result.teams.map(FB.score)) <= 2);
+    for (const key of ['f', 'm', 'u']) {
       assert.ok(spread(result.teams.map(t => FB.counts(t)[key])) <= 1, `uneven ${key}`);
     }
     const before = JSON.stringify(result.teams);
@@ -40,7 +41,7 @@ test('fair draw balances size, tiers, genders and positions; late picks preserve
   ]);
 });
 
-test('session API supports late joining, leaving, moving and role edits with persistent permissions', async () => {
+test('session API preserves pending draws, rejects invalid moves and persists role edits', async () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'frisbeing-test-'));
   const dataFile = path.join(temp, 'data.json');
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -127,12 +128,9 @@ test('session API supports late joining, leaving, moving and role edits with per
     await api('POST', `${gameRoute}/draw`, 'u1', { n: 2 }, 403);
     let view = await api('POST', `${gameRoute}/draw`, 'u0', { n: 2 });
     const original = new Map(view.teams.flatMap((t, i) => t.map(p => [p.id, i])));
-    const tierCounts = view.teams.map(t => FB.counts(t).A);
     let mine = await api('PUT', `${gameRoute}/rsvp`, 'u4', { status: 'in' });
-    const expected = 'ABCDEFGHIJKL'.indexOf(mine.mine.letter);
-    assert.equal(tierCounts[expected], Math.min(...tierCounts));
-    assert.equal(mine.mine.position, 'h');
-    assert.ok(mine.mine.players.every(p => !('tier' in p) && !('member' in p)));
+    assert.equal(mine.mine, null, 'late member waits for a redraw if adding them would exceed index limits');
+    assert.equal(mine.needsRedraw, true);
     assert.ok(!('teams' in mine) && !('joined' in mine));
     assert.ok(mine.participants.some(p => p.name === 'Test Late'));
     assert.ok(mine.participants.every(p => Object.keys(p).join() === 'name'));
@@ -148,6 +146,15 @@ test('session API supports late joining, leaving, moving and role edits with per
     await api('PUT', `/game/${tomorrow}/rsvp`, 'u4', { status: 'in' });
     view = await api('GET', '/game', 'u0');
     for (const [id, i] of original) assert.ok(view.teams[i].some(p => p.id === id));
+    assert.equal(view.teams.flat().length, 4, 'invalid attendance change keeps the previous result');
+    assert.ok(view.redrawReason);
+    view = await api('POST', `${gameRoute}/draw`, 'u0', { n: 2 });
+    assert.equal(view.needsRedraw, false);
+    assert.equal(FB.drawError(view.teams), null);
+    mine = await api('GET', '/game', 'u4');
+    const expected = 'ABCDEFGHIJKL'.indexOf(mine.mine.letter);
+    assert.equal(mine.mine.position, 'h');
+    assert.ok(mine.mine.players.every(p => !('tier' in p) && !('member' in p) && !('teammateGroupId' in p)));
     const version = (await api('GET', '/game', 'u4')).games;
     mine = await api('PUT', `${gameRoute}/rsvp`, 'u4', { status: 'in' });
     assert.equal(mine.games, version);
@@ -156,17 +163,22 @@ test('session API supports late joining, leaving, moving and role edits with per
     await api('PUT', `${gameRoute}/assignment`, 'u0', { id: 'u4', team: 8 }, 400);
     await api('PUT', `${gameRoute}/assignment`, 'u0', { id: 'u4', position: 'bad' }, 400);
     const target = 1 - expected;
-    view = await api('PUT', `${gameRoute}/assignment`, 'u0', { id: 'u4', team: target, position: 'c' });
+    const beforeInvalidMove = JSON.stringify((await api('GET', '/game', 'u0')).teams);
+    await api('PUT', `${gameRoute}/assignment`, 'u0', { id: 'u4', team: target, position: 'c' }, 409);
+    assert.equal(JSON.stringify((await api('GET', '/game', 'u0')).teams), beforeInvalidMove);
+    view = await api('PUT', `${gameRoute}/assignment`, 'u0', { id: 'u4', position: 'c' });
     assert.equal(view.teams.flat().filter(p => p.id === 'u4').length, 1);
-    assert.ok(view.teams[target].some(p => p.id === 'u4' && p.position === 'c'));
+    assert.ok(view.teams[expected].some(p => p.id === 'u4' && p.position === 'c'));
     mine = await api('GET', '/game', 'u4');
-    assert.equal(mine.mine.letter, 'ABCDEFGHIJKL'[target]);
+    assert.equal(mine.mine.letter, 'ABCDEFGHIJKL'[expected]);
     assert.equal(mine.mine.position, 'c');
     mine = await api('PUT', `${gameRoute}/rsvp`, 'u4', { status: 'out' });
     assert.equal(mine.mine, null);
+    assert.equal(mine.needsRedraw, true);
     assert.ok(!mine.participants.some(p => p.name === 'Test Late'), 'leaving removes the public name');
     mine = await api('PUT', `${gameRoute}/rsvp`, 'u4', { status: 'in' });
-    assert.equal(mine.mine.position, 'h', 'rejoining uses roster position');
+    assert.equal(mine.mine.position, 'c', 'rejoining retains the previous session assignment');
+    assert.equal(mine.needsRedraw, false);
     await api('PUT', `${gameRoute}/rsvp`, 'unknown', { status: 'in' });
     view = await api('GET', '/game', 'u0');
     assert.equal(view.teams.flat().find(p => p.id === 'unknown').tier, 'U');

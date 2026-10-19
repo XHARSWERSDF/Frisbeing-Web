@@ -7,9 +7,12 @@
   var memberLink = document.getElementById("membershipNav");
   var accountLink = document.getElementById("accountNav");
   if (!tools && !gameLink && !accountLink) return;
+  var localDevelopment = location.protocol === "file:" || ["localhost", "127.0.0.1", "::1", "[::1]"].indexOf(location.hostname) >= 0;
   var accountLabel = null;
   var inviteBadge = null;
+  var passionStarBadge = null;
   var inviteRequestId = 0;
+  var passionRequestId = 0;
   if (accountLink) {
     accountLabel = document.createTextNode("");
     inviteBadge = document.createElement("span");
@@ -21,11 +24,35 @@
     inviteMark.src = "assets/monogram.png";
     inviteMark.alt = "";
     inviteBadge.appendChild(inviteMark);
-    accountLink.replaceChildren(accountLabel, inviteBadge);
+    passionStarBadge = document.createElement("span");
+    passionStarBadge.className = "nav-passion-star-notification";
+    passionStarBadge.id = "navPassionStarNotification";
+    passionStarBadge.setAttribute("aria-hidden", "true");
+    passionStarBadge.textContent = "★";
+    passionStarBadge.hidden = true;
+    accountLink.replaceChildren(accountLabel, inviteBadge, passionStarBadge);
+  }
+
+  if (localDevelopment && window.FBPreview && FBPreview.simulateTeammates) {
+    var passionSimulator = document.createElement("button");
+    passionSimulator.type = "button";
+    passionSimulator.className = "dev-passion-star-global";
+    passionSimulator.textContent = "Simulate Passion Star";
+    passionSimulator.addEventListener("click", function () {
+      var alreadySignedInPreview = FBPreview.active() && FBPreview.signedIn();
+      if (/\/admin\.html$/.test(location.pathname)) {
+        try { sessionStorage.setItem("frisbeing.wait-for-passion-profile-open", "1"); } catch (ignore) { /* optional in private mode */ }
+      }
+      FBPreview.simulateTeammates("passion-star");
+      if (window.FBNav && FBNav.updatePassionStarStatus) FBNav.updatePassionStarStatus(true);
+      if (!alreadySignedInPreview && window.FBAuth && FBAuth._fire) FBAuth._fire();
+      if (window.FBNav && FBNav.refresh) FBNav.refresh();
+    });
+    document.body.appendChild(passionSimulator);
   }
 
   function syncUser(user) {
-    var active = !!user || !!(window.FBPreview && FBPreview.active());
+    var active = !!user || !!(window.FBPreview && FBPreview.signedIn && FBPreview.signedIn());
     document.body.classList.toggle("has-user-session", active);
     if (tools) tools.hidden = !active;
     if (gameLink) gameLink.hidden = false;
@@ -41,7 +68,8 @@
   function refreshInviteBadge(active) {
     if (!inviteBadge) return;
     var requestId = ++inviteRequestId;
-    if (!active) { inviteBadge.hidden = true; return; }
+    var starRequestId = ++passionRequestId;
+    if (!active) { inviteBadge.hidden = true; if (passionStarBadge) passionStarBadge.hidden = true; return; }
     var signedInUser = window.FBPreview && FBPreview.active()
       ? FBPreview.user()
       : window.FBAuth && FBAuth.user ? FBAuth.user() : null;
@@ -58,7 +86,7 @@
       request = FBPreview.request("GET", "/me");
     } else {
       var token = window.FBAuth && FBAuth.token ? FBAuth.token() : null;
-      if (!token) { inviteBadge.hidden = true; return; }
+      if (!token) { inviteBadge.hidden = true; if (passionStarBadge) passionStarBadge.hidden = true; return; }
       var base = window.FBServer && FBServer.apiBase ? String(FBServer.apiBase).replace(/\/$/, "") : "";
       request = fetch(base + "/me", {
         headers: { "Accept": "application/json", "Authorization": "Bearer " + token },
@@ -69,13 +97,15 @@
       });
     }
     request.then(function (data) {
-      if (requestId !== inviteRequestId) return;
       var pending = !!((data.teammateInvitations || []).length);
-      inviteBadge.hidden = !pending;
-      if (storageKey) {
-        try { window.localStorage.setItem(storageKey, pending ? "1" : "0"); }
-        catch (ignore) { /* a full or restricted storage does not block the badge */ }
+      if (requestId === inviteRequestId) {
+        inviteBadge.hidden = !pending;
+        if (storageKey) {
+          try { window.localStorage.setItem(storageKey, pending ? "1" : "0"); }
+          catch (ignore) { /* a full or restricted storage does not block the badge */ }
+        }
       }
+      if (passionRequestId === starRequestId && passionStarBadge) passionStarBadge.hidden = !(data.passionStar && data.passionStar.unseen);
     }).catch(function () {
       /* Keep the last known reminder during a temporary connection failure. */
     });
@@ -97,8 +127,24 @@
     } catch (ignore) { /* reminder remains visible for this page */ }
   }
 
+  function updatePassionStarStatus(unseen) {
+    ++passionRequestId;
+    if (passionStarBadge) passionStarBadge.hidden = !unseen;
+  }
+
   window.FBNav = window.FBNav || {};
   window.FBNav.updateInviteStatus = updateInviteStatus;
+  window.FBNav.updatePassionStarStatus = updatePassionStarStatus;
+  window.FBNav.refresh = function () { syncUser(window.FBAuth && FBAuth.user()); };
+  if (accountLink) accountLink.addEventListener("click", function () {
+    if (!/\/admin\.html$/.test(location.pathname)) return;
+    try {
+      if (sessionStorage.getItem("frisbeing.wait-for-passion-profile-open") === "1") {
+        sessionStorage.removeItem("frisbeing.wait-for-passion-profile-open");
+        window.location.reload();
+      }
+    } catch (ignore) { /* normal navigation still works */ }
+  });
   if (window.FBAuth) FBAuth.onChange(syncUser);
   syncUser(window.FBAuth && FBAuth.user());
   window.setInterval(function () {

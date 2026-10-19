@@ -404,11 +404,11 @@
     pending = [];
   }, 12000);
 
-  /* Lists and results are assembled by the roster, calendar and sorter
-     scripts after this file runs. Newly born rows get a short spring-pop,
-     echoing phystut's staggered calendar and note-card entrances. */
+  /* Player-facing updates may arrive asynchronously. Admin lists and team
+     panels are deliberately left out: their controls rerender after every
+     edit, and those edits should not replay entrance animations. */
   var bornCount = 0;
-  var bornSelector = ".member, .team, .cal-day, .rep, .mates li, .tonight > *, .day-panel > *";
+  var bornSelector = ".mates li, .tonight > *";
   var observer = new MutationObserver(function (mutations) {
     mutations.forEach(function (mutation) {
       Array.prototype.forEach.call(mutation.addedNodes, function (node) {

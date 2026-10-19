@@ -15,7 +15,7 @@
 <!-- ?v= matches CACHE in sw.js. The old sorter's script is still in phones'
      caches, and it cannot run this page: a URL that cache has never seen is
      fetched fresh instead. Bump both together when these files change. -->
-<link rel="stylesheet" href="assets/brand.css?v=167">
+<link rel="stylesheet" href="assets/brand.css?v=181">
 </head>
 <body data-background-emblem="false">
 
@@ -85,8 +85,8 @@
       <div class="day-panel" id="dayPanel" aria-live="polite"></div>
 
       <div style="text-align:center">
-        <button class="tiers-toggle" id="tiersToggle" type="button" aria-pressed="false">
-          <span class="box" aria-hidden="true"></span><span>Show skill levels</span>
+        <button class="tiers-toggle admin-only" id="tiersToggle" type="button" aria-pressed="false">
+          <span class="box" aria-hidden="true"></span><span>Show tiers</span>
         </button>
       </div>
     </div>
@@ -96,13 +96,14 @@
 </div>
 
 <script src="assets/server-config.js"></script>
-<script src="assets/engine.js?v=77"></script>
+<script src="assets/engine.js?v=78"></script>
 <script src="assets/auth-config.js"></script>
 <script src="assets/auth.js?v=3"></script>
-<script src="assets/preview-mode.js?v=18"></script>
-<script src="assets/navigation.js?v=9"></script>
-<script src="assets/motion.js?v=103"></script>
-<script src="assets/pwa.js"></script>
-<script src="assets/sort.js?v=111"></script>
+<script src="assets/teammate-rules.js?v=1"></script>
+<script src="assets/preview-mode.js?v=24"></script>
+<script src="assets/navigation.js?v=12"></script>
+<script src="assets/motion.js?v=104"></script>
+<script src="assets/pwa.js?v=2"></script>
+<script src="assets/sort.js?v=120"></script>
 </body>
 </html>

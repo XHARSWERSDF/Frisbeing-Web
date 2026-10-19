@@ -8,9 +8,9 @@
   }
   var signedOutPanel = document.getElementById("signedOut");
   if (signedOutPanel) {
-    signedOutPanel.insertAdjacentHTML("afterbegin", "<div class=\"preview-actions\">\n          <p class=\"hint\">Preview without signing in</p>\n          <div class=\"row\"><button class=\"btn\" data-preview-role=\"player\" type=\"button\"><span>Member</span></button><button class=\"btn\" data-preview-role=\"admin\" type=\"button\"><span>Admin</span></button><button class=\"btn\" data-preview-role=\"leader\" type=\"button\"><span>Admin Manager</span></button></div>\n          <p class=\"hint\">Preview interactions run only in this browser and do not change the live roster or sessions.</p>\n        </div>");
+    signedOutPanel.insertAdjacentHTML("afterbegin", "<div class=\"preview-actions\">\n          <p class=\"hint\">Preview without signing in</p>\n          <div class=\"row\"><button class=\"btn\" data-preview-role=\"guest\" type=\"button\"><span>Signed-out visitor</span></button><button class=\"btn\" data-preview-role=\"player\" type=\"button\"><span>Member</span></button><button class=\"btn\" data-preview-role=\"admin\" type=\"button\"><span>Admin</span></button><button class=\"btn\" data-preview-role=\"leader\" type=\"button\"><span>Admin Manager</span></button></div>\n          <p class=\"hint\">Preview interactions run only in this browser and do not change the live roster or sessions.</p>\n        </div>");
   }
-  var labels = { player: "Member", admin: "Admin", leader: "Admin Manager" };
+  var labels = { guest: "Signed-out visitor", player: "Member", admin: "Admin", leader: "Admin Manager" };
   var emailNames = { player: "member", admin: "admin", leader: "admin-manager" };
   var demoMembers = { player: "Demo Alex", admin: "Demo Jamie", leader: "Demo Taylor" };
   function enabled() { try { return localStorage.getItem(KEY) === "1"; } catch (e) { return false; } }
@@ -21,7 +21,8 @@
     localStorage.setItem(ROLE, labels[selectedRole] ? selectedRole : "player");
     window.location.assign(path || "sort.html");
   }
-  function user() { return { name: "Preview " + labels[role()], email: "preview-" + emailNames[role()] + "@tsinglan.org", member: demoMembers[role()], role: role(), attendanceCount: 0 }; }
+  function signedIn() { return enabled() && role() !== "guest"; }
+  function user() { return !signedIn() ? null : { name: "Preview " + labels[role()], email: "preview-" + emailNames[role()] + "@tsinglan.org", member: demoMembers[role()], role: role(), attendanceCount: 0 }; }
   function dateAt(offset) {
     var today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
     var d = new Date(today + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + offset);
@@ -33,6 +34,7 @@
     var minute = Number(parts.find(function (part) { return part.type === "minute"; }).value);
     return hour * 60 + minute < 20 * 60 + 10;
   }
+  function previewNorm(value) { return String(value || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ""); }
   var data;
   function getData() {
     if (!data) try { data = JSON.parse(localStorage.getItem(DATA)); } catch (e) { /* first preview */ }
@@ -41,12 +43,17 @@
         return { name: "Demo " + name, tier: ["A", "I", "B"][i % 3], gender: i % 2 ? "f" : "m", position: i % 3 ? "c" : "h" };
       });
       data = { version: 1, added: [dateAt(0), dateAt(1)], removed: [], games: {}, roster: roster,
-        accounts: Object.keys(labels).map(function (r) { return { id: r, name: "Preview " + labels[r], email: "preview-" + emailNames[r] + "@tsinglan.org", role: r, member: demoMembers[r] }; }) };
+        accounts: Object.keys(emailNames).map(function (r) { return { id: r, name: "Preview " + labels[r], email: "preview-" + emailNames[r] + "@tsinglan.org", role: r, member: demoMembers[r] }; }) };
       data.games[dateAt(0)] = { joined: roster.map(function (p, i) { return Object.assign({ id: "demo-" + i, member: p.name }, p); }), passed: [], draw: null };
       persist();
     }
     if (!Array.isArray(data.teammateInvitations)) data.teammateInvitations = [];
     if (!Array.isArray(data.teammateGroups)) data.teammateGroups = [];
+    data.teammateInvitations.forEach(function (invitation) {
+      if (invitation.fromUserId) return;
+      var sender = data.accounts.find(function (account) { return previewNorm(account.member || account.name) === previewNorm(invitation.fromName); });
+      if (sender) invitation.fromUserId = sender.email;
+    });
     if (!Array.isArray(data.gearProducts)) data.gearProducts = [];
     if (!data.gearProductsInitialized) {
       if (!data.gearProducts.some(function (product) { return product && product.id === "club-frisbee"; })) data.gearProducts.unshift({ id: "club-frisbee", name: "Club Frisbee", description: "Official Frisbeing UF disc", price: 50, image: "assets/photos/club-frisbee-reference.png", createdAt: Date.now() });
@@ -100,15 +107,27 @@
     return d.added.indexOf(date) >= 0 ? "extra" : null;
   }
   function game(date) { var d = getData(); return d.games[date] || (d.games[date] = { joined: [], passed: [], draw: null }); }
+  function drawingPlayers(g) {
+    return g.joined.map(function (player) {
+      var group = getData().teammateGroups.find(function (entry) {
+        return entry.members.some(function (member) { return previewNorm(member.name) === previewNorm(player.member || player.name); });
+      });
+      return Object.assign({}, player, { teammateGroupId: group ? group.id : null });
+    });
+  }
   function view(date) {
     var g = game(date), k = kind(date), id = "preview-" + role();
-    var v = { date: date, today: dateAt(0), tz: "Asia/Shanghai", kind: k, isGame: !!k, signedIn: true, role: role(), games: data.version,
+    var ownEntry = signedIn() && g.joined.concat(g.passed).find(function (p) { return previewNorm(p.member || p.name) === previewNorm(user().member); });
+    if (ownEntry) id = ownEntry.id;
+    var v = { date: date, today: dateAt(0), tz: "Asia/Shanghai", kind: k, isGame: !!k, signedIn: signedIn(), role: role(), games: data.version,
       canJoin: !!k && date >= dateAt(0) && date <= dateAt(1) && (date !== dateAt(0) || beforeSessionCutoff()), participants: g.joined.map(function (p) { return { name: p.name }; }),
       me: { rsvp: g.joined.some(function (p) { return p.id === id; }) ? "in" : g.passed.some(function (p) { return p.id === id; }) ? "out" : null }, drawn: !!g.draw };
-    if (role() !== "player") { v.joined = g.joined; v.passed = g.passed; if (g.draw) v.teams = g.draw.teams; }
+    if (role() !== "player" && role() !== "guest") { v.joined = g.joined; v.passed = g.passed; if (g.draw) v.teams = g.draw.teams; }
     if (g.draw) {
       v.draw = { at: g.draw.at, n: g.draw.teams.length };
-      var idx = g.draw.teams.findIndex(function (t) { return t.some(function (p) { return p.id === id; }); });
+      v.needsRedraw = !!g.draw.needsRedraw;
+      if (role() !== "player" && role() !== "guest") v.redrawReason = g.draw.redrawReason || null;
+      var idx = v.me.rsvp === "in" ? g.draw.teams.findIndex(function (t) { return t.some(function (p) { return p.id === id; }); }) : -1;
       v.mine = idx < 0 ? null : { letter: "ABCDEFGHIJKL"[idx], members: g.draw.teams[idx].map(function (p) { return p.name; }), players: g.draw.teams[idx], position: g.draw.teams[idx].find(function (p) { return p.id === id; }).position };
     }
     return v;
@@ -119,34 +138,60 @@
     return { id: group.id, leaderId: group.leaderId, leaderName: group.leaderName || group.members.find(function (m) { return m.id === group.leaderId; }).name,
       isLeader: group.leaderId === id, members: group.members.map(function (member) { return { id: member.id, name: member.name, isMe: member.id === id }; }) };
   }
+  function previewAccountFor(memberName) {
+    return getData().accounts.find(function (account) { return account.member && previewNorm(account.member) === previewNorm(memberName); });
+  }
+  function previewInvitationState(invitation, memberName) {
+    var recipient = previewAccountFor(memberName);
+    var recipientGroup = getData().teammateGroups.find(function (group) {
+      return group.members.some(function (member) { return previewNorm(member.name) === previewNorm(memberName); });
+    }) || (recipient && groupFor(recipient.email));
+    return FBTeammates.classify(groupFor(invitation.fromUserId), recipientGroup, invitation.groupId);
+  }
   function teammateInvitationsFor(memberName) {
-    var alreadyGrouped = getData().teammateGroups.some(function (group) {
-      return group.members.some(function (member) { return member.name.toLowerCase() === String(memberName || "").toLowerCase(); });
-    });
-    if (alreadyGrouped) return [];
     return getData().teammateInvitations.filter(function (invitation) {
-      return invitation.status === "pending" && invitation.toMember.toLowerCase() === String(memberName || "").toLowerCase();
-    }).map(function (invitation) { return { id: invitation.id, inviterName: invitation.fromName, createdAt: invitation.createdAt }; });
+      return invitation.status === "pending" && previewNorm(invitation.toMember) === previewNorm(memberName);
+    }).map(function (invitation) {
+      return { id: invitation.id, inviterName: invitation.fromName, createdAt: invitation.createdAt,
+        kind: previewInvitationState(invitation, memberName).kind };
+    }).filter(function (invitation) { return invitation.kind !== "unavailable"; });
   }
   function teammateInvitationsSentBy(userId) {
     return getData().teammateInvitations.filter(function (invitation) { return invitation.status === "pending" && invitation.fromUserId === userId; })
-      .map(function (invitation) { return { id: invitation.id, memberName: invitation.toMember, createdAt: invitation.createdAt }; });
+      .map(function (invitation) {
+        var current = previewInvitationState(invitation, invitation.toMember);
+        return { id: invitation.id, memberName: invitation.toMember, createdAt: invitation.createdAt, kind: current.kind, message: current.message };
+      });
   }
   function addTeammateInvitation(fromUser, memberName) {
+    var fromId = fromUser.email || fromUser.id;
     var existing = getData().teammateInvitations.find(function (invitation) {
-      return invitation.status === "pending" && invitation.fromUserId === fromUser.id && invitation.toMember.toLowerCase() === memberName.toLowerCase();
+      return invitation.status === "pending" && invitation.fromUserId === fromId && previewNorm(invitation.toMember) === previewNorm(memberName);
     });
-    if (existing) return existing;
-    var invitation = { id: "preview-invite-" + Math.random().toString(36).slice(2, 10), fromUserId: fromUser.id,
-      fromName: fromUser.member || fromUser.name, toMember: memberName, status: "pending", createdAt: Date.now() };
+    if (existing && previewInvitationState(existing, memberName).kind !== "unavailable") return existing;
+    if (existing) existing.status = "unavailable";
+    var invitation = { id: "preview-invite-" + Math.random().toString(36).slice(2, 10), fromUserId: fromId,
+      fromName: fromUser.member || fromUser.name, toMember: memberName, status: "pending", createdAt: Date.now(),
+      groupId: (groupFor(fromId) || {}).id || null };
     getData().teammateInvitations.push(invitation);
     return invitation;
   }
   function request(method, path, body) {
     return Promise.resolve().then(function () {
       var d = getData(), url = new URL(path, "https://preview.invalid"), route = url.pathname, result;
-      if (method !== "GET" && role() === "player" && !/\/rsvp$/.test(route) && route !== "/me/preferences" && route.indexOf("/me/teammate-invitations") !== 0 && route.indexOf("/me/teammate-group") !== 0) throw new Error("Switch to Admin or Admin Manager preview to use this control.");
+      if (method !== "GET" && role() === "guest") throw new Error("Sign in to use this action.");
+      if (method !== "GET" && (role() === "player" || role() === "guest") && !/\/rsvp$/.test(route) && route !== "/me/preferences" && route !== "/me/passion-star/seen" && route.indexOf("/me/teammate-invitations") !== 0 && route.indexOf("/me/teammate-group") !== 0) throw new Error("Switch to Admin or Admin Manager preview to use this control.");
       if (route === "/version") return { version: d.version, games: d.version };
+      if (route === "/teammate-groups" && method === "GET") {
+        if (role() !== "admin" && role() !== "leader") throw new Error("Only Admin and Admin Manager accounts can view teams.");
+        return { teams: d.teammateGroups.map(function (group) {
+          return { id: group.id, members: group.members.map(function (member) {
+            if (member && typeof member === "object") return { name: member.name || member.member || "Member" };
+            var account = d.accounts.find(function (entry) { return entry.email === member || entry.id === member; });
+            return { name: account ? (account.member || account.name) : "Member" };
+          }) };
+        }) };
+      }
       if (route === "/gear-products" && method === "GET") return { products: d.gearProducts };
       if (route === "/gear-products" && method === "POST") {
         if (role() !== "admin" && role() !== "leader") throw new Error("Only Admin and Admin Manager accounts can add products.");
@@ -185,11 +230,27 @@
         d.gearProducts.splice(removeProductIndex, 1); persist();
         return { removed: true };
       }
-      if (route === "/state") return { version: d.version, roster: d.roster.map(function (p) { return role() === "player" ? { name: p.name, gender: p.gender } : p; }), teams: null };
+      if (route === "/state") return { version: d.version, roster: d.roster.map(function (p) { return role() === "player" || role() === "guest" ? { name: p.name, gender: p.gender } : p; }), teams: null };
       if (route === "/me" && method === "GET") {
+        if (!signedIn()) throw new Error("This preview visitor is signed out.");
         var current = user(), group = groupFor(current.email);
-        return { role: role(), account: Object.assign({}, current, { preferredTeammates: (d.preferredTeammates && d.preferredTeammates[role()]) || [] }),
+        var storedAccount = d.accounts.find(function (entry) { return entry.id === role(); });
+        if (storedAccount && Number(storedAccount.attendanceCount) >= 5 && !storedAccount.passionStarUnlockedAt) {
+          storedAccount.passionStarUnlockedAt = Date.now();
+          persist();
+        }
+        var star = storedAccount && storedAccount.passionStarUnlockedAt;
+        return { role: role(), account: Object.assign({}, current, { attendanceCount: Number(storedAccount && storedAccount.attendanceCount) || 0, preferredTeammates: (d.preferredTeammates && d.preferredTeammates[role()]) || [] }),
+          passionStar: { unlocked: !!star, unseen: !!star && !storedAccount.passionStarSeenAt, unlockedAt: star || null, seenAt: storedAccount && storedAccount.passionStarSeenAt || null, currentStreak: 0 },
           teammateGroup: teammateGroupView(group, current.email), teammateInvitations: teammateInvitationsFor(current.member), teammateInvitationsSent: teammateInvitationsSentBy(current.email) };
+      }
+      if (route === "/me/passion-star/seen" && method === "POST") {
+        if (!signedIn()) throw new Error("Sign in to view your award.");
+        var awardAccount = d.accounts.find(function (entry) { return entry.id === role(); });
+        if (!awardAccount || !awardAccount.passionStarUnlockedAt) throw new Error("The Passion Star has not been unlocked yet.");
+        var awardAlreadySeen = !!awardAccount.passionStarSeenAt;
+        if (!awardAlreadySeen) { awardAccount.passionStarSeenAt = Date.now(); persist(); }
+        return { seen: true, alreadySeen: awardAlreadySeen };
       }
       if (route === "/me/preferences" && method === "PUT") {
         var requested = body && body.preferredTeammates;
@@ -200,7 +261,8 @@
           if (!member || selected.indexOf(member.name) >= 0) throw new Error("Choose members from the current member list.");
           if (member.name.toLowerCase() === user().member.toLowerCase()) throw new Error("You cannot invite yourself.");
           var linked = d.accounts.find(function (account) { return account.member && account.member.toLowerCase() === member.name.toLowerCase(); });
-          if (linked && groupFor("preview-" + emailNames[linked.role] + "@tsinglan.org")) throw new Error(member.name + " is already in a teammate group.");
+          var currentState = FBTeammates.classify(groupFor(user().email), linked && groupFor(linked.email));
+          if (currentState.kind === "unavailable") throw new Error(member.name + ": " + currentState.message);
           selected.push(member.name);
         });
         var current = user(), group = groupFor(current.email), slots = group ? 3 - group.members.length : 2;
@@ -213,7 +275,9 @@
         });
         selected.forEach(function (name) { addTeammateInvitation(current, name); });
         persist();
-        return { preferredTeammates: selected, invitationsSent: selected.length };
+        var notices = teammateInvitationsSentBy(current.email).filter(function (entry) { return entry.kind === "invite-back"; })
+          .map(function (entry) { return entry.memberName + ": " + entry.message; });
+        return { preferredTeammates: selected, invitationsSent: selected.length, notices: notices };
       }
       if (route === "/me/teammate-invitations" && method === "POST") {
         var target = d.roster.find(function (entry) { return entry.name.toLowerCase() === String(body && body.member || "").trim().toLowerCase(); });
@@ -249,24 +313,26 @@
         if (!invitation) throw new Error("That invitation is no longer available.");
         if (body.response === "decline") { invitation.status = "declined"; }
         else {
-          if (groupFor(recipient.email)) throw new Error("You are already in a teammate group.");
-          var inviterGroup = groupFor(invitation.fromUserId);
-          if (inviterGroup && inviterGroup.members.length >= 3) throw new Error("That teammate group is full.");
-          if (!inviterGroup) {
-            inviterGroup = { id: "preview-group-" + Date.now(), leaderId: invitation.fromUserId, leaderName: invitation.fromName,
-              members: [{ id: invitation.fromUserId, name: invitation.fromName }], demo: !!invitation.demo };
-            d.teammateGroups.push(inviterGroup);
+          var currentState = previewInvitationState(invitation, recipient.member);
+          if (currentState.kind === "unavailable") throw new Error(currentState.message);
+          if (body.expectedKind && body.expectedKind !== currentState.kind) throw new Error("Team membership changed. Review the updated invitation and try again.");
+          if (currentState.kind === "invite-back") {
+            addTeammateInvitation(recipient, invitation.fromName);
+            invitation.status = "invited-back";
+          } else {
+            var inviterGroup = groupFor(invitation.fromUserId);
+            if (!inviterGroup) {
+              inviterGroup = { id: "preview-group-" + Math.random().toString(36).slice(2), leaderId: invitation.fromUserId, leaderName: invitation.fromName,
+                members: [{ id: invitation.fromUserId, name: invitation.fromName }], demo: !!invitation.demo };
+              d.teammateGroups.push(inviterGroup);
+            }
+            inviterGroup.members.push({ id: recipient.email, name: recipient.member });
+            invitation.status = "accepted";
           }
-          inviterGroup.members.push({ id: recipient.email, name: recipient.member });
-          invitation.status = "accepted";
-          d.teammateInvitations.forEach(function (other) {
-            if (other !== invitation && other.status === "pending" && other.toMember.toLowerCase() === recipient.member.toLowerCase()) other.status = "unavailable";
-            if (inviterGroup.members.length >= 3 && other.status === "pending" && other.fromUserId === invitation.fromUserId) other.status = "unavailable";
-          });
         }
         invitation.respondedAt = Date.now(); persist();
         var joinedGroup = groupFor(recipient.email);
-        return { account: recipient, teammateGroup: teammateGroupView(joinedGroup, recipient.email), teammateInvitations: teammateInvitationsFor(recipient.member), teammateInvitationsSent: teammateInvitationsSentBy(recipient.email) };
+        return { invitationAction: invitation.status, account: recipient, teammateGroup: teammateGroupView(joinedGroup, recipient.email), teammateInvitations: teammateInvitationsFor(recipient.member), teammateInvitationsSent: teammateInvitationsSentBy(recipient.email) };
       }
       if (route === "/roster" && method === "PUT") { d.roster = body.roster; result = { version: d.version + 1 }; }
       else if (route === "/accounts" && method === "GET") { if (role() === "player") throw new Error("Admin preview required."); return { accounts: d.accounts }; }
@@ -294,18 +360,32 @@
         var date = route.split("/")[2], action = route.split("/")[3], g = game(date), id = "preview-" + role();
         if (action === "rsvp") {
           if (date === dateAt(0) && !beforeSessionCutoff()) throw new Error("Sign-ups for tonight closed at 20:10.");
-          var person = Object.assign({ id: id, tier: "I", gender: "", position: "c" }, user());
+          var currentUser = user(), rosterEntry = d.roster.find(function (p) { return previewNorm(p.name) === previewNorm(currentUser.member); });
+          var previousEntry = g.joined.concat(g.passed).find(function (p) { return previewNorm(p.member || p.name) === previewNorm(currentUser.member); });
+          if (previousEntry) id = previousEntry.id;
+          var person = Object.assign({ id: id, tier: rosterEntry ? rosterEntry.tier : "U", gender: rosterEntry ? rosterEntry.gender : "", position: FB.position(rosterEntry) }, currentUser);
           g.joined = g.joined.filter(function (p) { return p.id !== id; }); g.passed = g.passed.filter(function (p) { return p.id !== id; });
           (body.status === "in" ? g.joined : g.passed).push(person);
-          if (g.draw) { g.draw.teams = g.draw.teams.map(function (t) { return t.filter(function (p) { return p.id !== id; }); }); if (body.status === "in") g.draw.teams[FB.chooseTeam(g.draw.teams, person)].push(person); }
+          if (g.draw) {
+            var refreshed = FB.refreshDrawAttendance(g.draw.teams, drawingPlayers(g));
+            if (refreshed.reason) { g.draw.needsRedraw = true; g.draw.redrawReason = refreshed.reason; }
+            else { g.draw.teams = refreshed.teams; g.draw.needsRedraw = false; g.draw.redrawReason = null; }
+          }
         } else if (action === "draw") {
           if (method === "DELETE") g.draw = null;
-          else { var sorted = FB.sort(g.joined, "fair", body.n); if (sorted.error) throw new Error(sorted.error); g.draw = { at: Date.now(), teams: sorted.teams }; }
+          else { var sorted = FB.sort(drawingPlayers(g), "fair", body.n); if (sorted.error) throw new Error(sorted.error); g.draw = { at: Date.now(), teams: sorted.teams }; }
         } else if (action === "assignment" && g.draw) {
           var source = g.draw.teams.findIndex(function (t) { return t.some(function (p) { return p.id === body.id; }); });
-          var p = g.draw.teams[source].find(function (p) { return p.id === body.id; });
-          if (body.position) p.position = body.position;
-          if (body.team !== undefined) { g.draw.teams[source] = g.draw.teams[source].filter(function (x) { return x.id !== p.id; }); g.draw.teams[body.team].push(p); }
+          if (source < 0) throw new Error("That player is no longer on a team.");
+          if (body.team !== undefined && body.team !== source) {
+            if (g.draw.needsRedraw) throw new Error("Attendance changed. Draw teams again before moving players.");
+            var groupIds = new Map(drawingPlayers(g).map(function (p) { return [p.id, p.teammateGroupId]; }));
+            var candidate = g.draw.teams.map(function (t) { return t.map(function (p) { return Object.assign({}, p, { teammateGroupId: groupIds.get(p.id) || null }); }); });
+            var moved = FB.moveTeamMember(candidate, body.id, body.team);
+            if (moved.error) throw new Error(moved.error);
+            g.draw.teams = moved.teams;
+          }
+          if (body.position) g.draw.teams.forEach(function (t) { t.forEach(function (p) { if (p.id === body.id) p.position = body.position; }); });
         } else throw new Error("This preview action is unavailable.");
         d.version++; persist(); return Object.assign(view(date), { notifying: 0 });
       } else throw new Error("This preview action is unavailable.");
@@ -313,9 +393,23 @@
     }).then(function (result) { return JSON.parse(JSON.stringify(result)); });
   }
   function simulateTeammates(kind) {
+    if (!enabled() || role() === "guest") {
+      localStorage.setItem(KEY, "1");
+      localStorage.setItem(ROLE, "player");
+    }
     var d = getData(), current = user(), currentId = current.email;
     d.teammateInvitations = d.teammateInvitations.filter(function (invitation) { return !invitation.demo; });
     d.teammateGroups = d.teammateGroups.filter(function (group) { return !group.demo; });
+    var currentAccount = d.accounts.find(function (account) { return account.id === role(); });
+    if (kind === "passion-star" && currentAccount) {
+      currentAccount.attendanceCount = 5;
+      currentAccount.passionStarUnlockedAt = Date.now();
+      delete currentAccount.passionStarSeenAt;
+    } else if (kind === "reset" && currentAccount) {
+      currentAccount.attendanceCount = 0;
+      delete currentAccount.passionStarUnlockedAt;
+      delete currentAccount.passionStarSeenAt;
+    }
     if (kind === "invite") {
       d.teammateInvitations.push({ id: "demo-invite-" + Date.now(), fromUserId: "demo-captain", fromName: "Demo Captain",
         toMember: current.member, status: "pending", createdAt: Date.now(), demo: true });
@@ -326,7 +420,7 @@
     }
     persist();
   }
-  window.FBPreview = { active: enabled, enable: enable, stop: stop, user: user, role: role, request: request, simulateTeammates: simulateTeammates };
+  window.FBPreview = { active: enabled, signedIn: signedIn, enable: enable, stop: stop, user: user, role: role, request: request, simulateTeammates: simulateTeammates };
   if (enabled()) {
     // UI-only identity. All preview requests use the isolated local adapter.
     if (window.FBAuth) {

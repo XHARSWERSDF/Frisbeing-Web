@@ -95,9 +95,9 @@
 
   function serverMode() { return !isPreview() && !!(SRV.apiBase && String(SRV.apiBase).trim()); }
   function isPreview() { return !!(window.FBPreview && FBPreview.active()); }
-  function signedIn() { return isPreview() || !!(window.FBAuth && FBAuth.user()); }
+  function signedIn() { return isPreview() ? (FBPreview.signedIn ? FBPreview.signedIn() : true) : !!(window.FBAuth && FBAuth.user()); }
   function isAdmin() { return !!(window.FBAuth && FBAuth.isAdmin()); }
-  function myName() { var u = window.FBAuth && FBAuth.user(); return u ? u.name : isPreview() ? "Preview Member" : ""; }
+  function myName() { var u = window.FBAuth && FBAuth.user(); return u ? u.name : ""; }
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
@@ -272,6 +272,9 @@
     }
     if (!t) return paint('<p class="tn-small">Checking tonight&hellip;</p>');
     if (!t.isGame) return paint(noGameHtml());
+    if (t.needsRedraw && t.me && t.me.rsvp === "in" && !t.mine) {
+      return paint('<h2 class="tn-big tn-answer">You’re in!</h2><p class="tn-small">Waiting for the updated teams.</p>' + (t.canJoin ? changeAnswerHtml() : ''));
+    }
     if (state.sessionStartedShown) {
       if (t.drawn && t.mine) return paint(revealedAlready(t) ? revealHtml(t.mine) : seeYourTeamHtml());
       return paint(startedHtml());
@@ -750,7 +753,6 @@
       ? '<ul class="who-list' + (passed ? " passed" : "") + '">' + list.map(function (p) {
           return '<li>' + (passed ? "" : '<span class="g" aria-hidden="true">' + genderMark(p.gender) + '</span>' + tierHtml(p.tier)) +
             nameHtml(p) +
-            (passed ? '' : '<span class="position-badge">' + FB.POSITION_NAME[FB.position(p)] + '</span>') +
             (!passed && !p.member ? '<span class="unl" title="Not linked to the squad list yet, so they play as unclassified">not on squad list</span>' : '') +
             '</li>';
         }).join("") + '</ul>'
@@ -761,29 +763,16 @@
   function teamsHtml(teams) {
     return (Array.isArray(teams) ? teams : []).map(function (team, i) {
       team = Array.isArray(team) ? team.filter(function (player) { return player && typeof player === "object"; }) : [];
-      var c = FB.counts(team);
       var rows = team.slice().sort(function (a, b) {
-        return FB.TIERS.indexOf(a.tier) - FB.TIERS.indexOf(b.tier) || a.name.localeCompare(b.name);
+        return a.name.localeCompare(b.name);
       }).map(function (p) {
-        var controls = isAdmin()
-          ? '<div class="assignment-controls" role="group" aria-label="' + esc(p.name) + ': position">' +
-            ['h', 'c'].map(function (pos) {
-              return '<button type="button" data-assignment="position" data-id="' + esc(p.id) + '" data-position="' + pos +
-                '" aria-label="' + esc(p.name) + ': ' + FB.POSITION_NAME[pos] + '" aria-pressed="' + (FB.position(p) === pos) +
-                '"><span>' + FB.POSITION_NAME[pos] + '</span></button>';
-            }).join('') + '</div>'
-          : '';
-        return '<li class="assignment-row"' + (isAdmin() ? ' draggable="true" data-player-id="' + esc(p.id) + '" data-source-team="' + i + '" title="Drag to another team"' : '') +
-          '><div class="assignment-name">' + tierHtml(p.tier) + nameHtml(p) + '</div>' + controls + '</li>';
+        return '<li class="assignment-row"' + (isAdmin()
+          ? ' draggable="true" data-player-id="' + esc(p.id) + '" data-source-team="' + i + '"'
+          : '') + '><div class="assignment-name">' + tierHtml(p.tier) + nameHtml(p) + '</div></li>';
       }).join("");
       return '<div class="team"' + (isAdmin() ? ' data-team-index="' + i + '"' : '') + ' style="animation-delay:' + (reduce ? 0 : i * 70) + 'ms">' +
-        '<div class="team-hd"><span class="nm">Team ' + LETTERS[i] + '</span><span class="team-meta"><span class="ct">' + team.length +
-        (team.length === 1 ? ' player' : ' players') + '</span>' +
-        (isAdmin() ? '<span class="team-positions">' + c.h + ' Handle &middot; ' + c.c + ' Cutter</span>' : '') + '</span></div>' +
-        '<ol>' + rows + '</ol>' +
-        '<div class="bal"><span>' + (c.f + c.m > 0 ? c.f + "♀ " + c.m + "♂ &middot; " : "") +
-        c.A + " T1 &middot; " + c.I + " T2 &middot; " + c.B + " T3" + (c.U ? " &middot; " + c.U + " T4" : "") +
-        '</span><span>Score <b>' + FB.score(team) + '</b></span></div></div>';
+        '<div class="team-hd"><span class="nm">Team ' + LETTERS[i] + '</span></div>' +
+        '<ol>' + rows + '</ol></div>';
     }).join("");
   }
 
@@ -827,6 +816,7 @@
     h += '</div><p class="tn-error" id="drawError"></p>';
 
     if (v.drawn && v.teams) {
+      if (v.needsRedraw) h += '<p class="tn-error" role="status">Attendance changed. Draw teams again. Previous teams are kept until then. ' + esc(v.redrawReason || '') + '</p>';
       h += '<p class="shared-banner"><b>Teams are out.</b> ' +
         (state.notified == null ? "Everyone who joined can see their team"
           /* nobody turned notifications on - not a failure, but worth a nudge */
@@ -971,56 +961,82 @@
     updateAssignment({ id: button.getAttribute("data-id"), position: button.getAttribute("data-position") });
   });
 
-  var draggedMember = null;
+  var memberDrag = null;
   function clearDropTargets() {
     dayEl.querySelectorAll(".team.drop-target").forEach(function (node) {
       node.classList.remove("drop-target");
     });
   }
+  function finishMemberDrag() {
+    var drag = memberDrag;
+    memberDrag = null;
+    clearDropTargets();
+    if (!drag) return null;
+    drag.row.classList.remove("dragging");
+    if (drag.ghost) drag.ghost.remove();
+    if (drag.row.hasPointerCapture(drag.pointer)) drag.row.releasePointerCapture(drag.pointer);
+    return drag;
+  }
+  // Pointer events also work in embedded browsers and on touch screens.
   dayEl.addEventListener("dragstart", function (e) {
-    var row = e.target.closest(".assignment-row[draggable]");
-    if (!row || !isAdmin() || state.busy || state.spinning) { e.preventDefault(); return; }
-    draggedMember = { id: row.getAttribute("data-player-id"), source: Number(row.getAttribute("data-source-team")) };
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", draggedMember.id);
-    row.classList.add("dragging");
+    if (e.target.closest(".assignment-row")) e.preventDefault();
   });
-  dayEl.addEventListener("dragover", function (e) {
-    if (!draggedMember) return;
-    var team = e.target.closest(".team[data-team-index]");
-    clearDropTargets();
-    if (!team || Number(team.getAttribute("data-team-index")) === draggedMember.source) return;
+  dayEl.addEventListener("pointerdown", function (e) {
+    var row = e.target.closest('.assignment-row[draggable="true"]');
+    if (!row || e.button !== 0 || !e.isPrimary || !isAdmin() || state.busy || state.spinning) return;
+    finishMemberDrag();
+    memberDrag = { row: row, pointer: e.pointerId, id: row.getAttribute("data-player-id"),
+      source: Number(row.getAttribute("data-source-team")), x: e.clientX, y: e.clientY, target: null };
+    row.setPointerCapture(e.pointerId);
+  });
+  dayEl.addEventListener("pointermove", function (e) {
+    var drag = memberDrag;
+    if (!drag || e.pointerId !== drag.pointer) return;
+    if (!drag.ghost) {
+      if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 6) return;
+      drag.ghost = document.createElement("div");
+      drag.ghost.className = "assignment-drag-preview";
+      drag.ghost.textContent = drag.row.querySelector(".assignment-name > span:last-child").textContent;
+      drag.ghost.setAttribute("aria-hidden", "true");
+      document.body.appendChild(drag.ghost);
+      drag.row.classList.add("dragging");
+    }
     e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    team.classList.add("drop-target");
-  });
-  dayEl.addEventListener("drop", function (e) {
-    var team = e.target.closest(".team[data-team-index]");
-    if (!draggedMember || !team) return;
-    e.preventDefault();
-    var target = Number(team.getAttribute("data-team-index"));
-    var member = draggedMember;
-    draggedMember = null;
+    drag.ghost.style.left = (e.clientX + 12) + "px";
+    drag.ghost.style.top = (e.clientY + 12) + "px";
+    var hit = document.elementFromPoint(e.clientX, e.clientY);
+    var team = hit && hit.closest(".team[data-team-index]");
     clearDropTargets();
-    if (target !== member.source) updateAssignment({ id: member.id, team: target });
+    drag.target = team && dayEl.contains(team) ? Number(team.getAttribute("data-team-index")) : null;
+    if (drag.target === drag.source) drag.target = null;
+    if (drag.target !== null) team.classList.add("drop-target");
   });
-  dayEl.addEventListener("dragend", function () {
-    draggedMember = null;
-    clearDropTargets();
-    dayEl.querySelectorAll(".assignment-row.dragging").forEach(function (row) { row.classList.remove("dragging"); });
+  dayEl.addEventListener("pointerup", function (e) {
+    if (!memberDrag || e.pointerId !== memberDrag.pointer) return;
+    var drag = finishMemberDrag();
+    if (drag.ghost && drag.target !== null) updateAssignment({ id: drag.id, team: drag.target });
   });
+  dayEl.addEventListener("pointercancel", finishMemberDrag);
+  dayEl.addEventListener("lostpointercapture", finishMemberDrag);
+  window.addEventListener("blur", finishMemberDrag);
 
   /* "Show skill levels" - a leader's own choice, remembered on this device. */
   function applyTiers(on) {
     bandEl.classList.toggle("tiers-on", on);
     toggleEl.setAttribute("aria-pressed", String(on));
   }
+  function syncTierVisibility() {
+    var allowed = isAdmin();
+    toggleEl.hidden = !allowed;
+    applyTiers(allowed && readPref(TIERS_KEY) === "1");
+  }
   toggleEl.addEventListener("click", function () {
+    if (!isAdmin()) { syncTierVisibility(); return; }
     var on = toggleEl.getAttribute("aria-pressed") !== "true";
     writePref(TIERS_KEY, on ? "1" : "0");
     applyTiers(on);
   });
-  applyTiers(readPref(TIERS_KEY) === "1");
+  syncTierVisibility();
 
   /* ------------------------------------------------------------- polling --
      Every few seconds ask only for the counters. When the sessions counter
@@ -1053,6 +1069,7 @@
   /* --------------------------------------------------------------- start -- */
 
   function boot() {
+    syncTierVisibility();
     if (isPreview()) {
       bandEl.hidden = !isAdmin();
       loadTonight().then(function () {

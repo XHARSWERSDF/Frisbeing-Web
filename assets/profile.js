@@ -1,7 +1,7 @@
 (function () {
   "use strict";
   var user = window.FBAuth && FBAuth.user();
-  if (!user && window.FBPreview && FBPreview.active()) user = FBPreview.user();
+  if (!user && window.FBPreview && FBPreview.signedIn && FBPreview.signedIn()) user = FBPreview.user();
   if (!user) {
     window.location.replace("admin.html");
     return;

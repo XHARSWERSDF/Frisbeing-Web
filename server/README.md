@@ -169,11 +169,31 @@ and sends invitations to at most two roster members. The captain of a
 two-person group can invite one more member with `POST /me/teammate-invitations`
 and `{ "member": "Name" }`. Invitees respond at
 `POST /me/teammate-invitations/:id/respond` with `{ "response": "accept" }` or
-`{ "response": "decline" }`. An accepted invitation adds the invitee to the
-captain's group, which is limited to three people.
-Each account can belong to only one group. A member may receive invitations
-from multiple captains, but accepting one makes all their other pending
-invitations unavailable and removes them from the member's invitation list.
+`{ "response": "decline" }`. Incoming invitations include a `kind`:
+`invite` offers membership, while `invite-back` asks a grouped recipient to
+invite the ungrouped sender into their existing team. Clients include the
+shown kind as `expectedKind` when responding; a changed meaning returns `409`
+so the member can review the new action.
+
+For example, ungrouped A sends an invitation to grouped B. A sees that B
+already has a team; B sees “Invite them to your team?”. B's acceptance sends
+A a new invitation (`invitationAction: "invited-back"`), without changing
+any membership. A must accept that new invitation to join B's team. B may
+approve this request even if B is not the captain. The existing captain is
+preserved. Sending invitations directly from an existing team remains a
+captain action.
+
+Each account can belong to only one group, with at most three members per
+group. Both rules are rechecked at acceptance using current state; no group
+merges or automatic departures occur. Invitations sent while ungrouped are
+reinterpreted after another acceptance: if A invites B and B invites C,
+B accepting A first lets C join their team; C accepting B first makes A's
+invitation to B an `invite-back` request. Invitations between members of two
+existing teams, or into full teams, are unavailable. Sent invitations expose
+`kind` and `message` to explain these conflicts. Invitations sent from an
+existing group are bound to that group, and cannot follow the sender into
+a different group.
+
 The captain can remove another member with `DELETE
 /me/teammate-group/members/:memberId`; any member can use the same endpoint
 for their own ID to leave. If the captain leaves a group of three, the next
@@ -211,15 +231,38 @@ called off.
 | `GET /schedule?month=2026-09` | anyone | — | `{ month, today, sessions: [{ date, kind, drawn, joined? }] }` — `kind` is `regular` or `extra`; `joined` counts only go to leaders and admins |
 | `POST /schedule` | leaders, admins | `{ "date", "action": "add" \| "remove" }` | `{ date, kind }`. Past days are refused. Removing a day deletes its answers and teams |
 | `GET /game?date=…` | anyone | — | That day as the asker may see it (defaults to today). Everyone: `{ date, today, isGame, kind, canJoin, participants: [{ name }] }`. Without a `date` query, also includes `upcoming`, tomorrow’s view. Signed in, also: `me.rsvp`, `drawn`, and `mine: { letter, members: [names] }` once teams are out. Leaders and admins, also: `joined` (with tier and gender), `passed`, and every team in `teams` |
-| `PUT /game/:date/rsvp` | signed in | `{ "status": "in" \| "out" }` | the updated view. Available on the session day and the previous calendar day in `CLUB_TZ`; tonight's answers close at 9pm. Each date has its own answer. Joining after the draw inserts the player into a balanced existing team. Leaving removes only that player. Repeating the same answer is a no-op |
+| `PUT /game/:date/rsvp` | signed in | `{ "status": "in" \| "out" }` | the updated view. Available on the session day and the previous calendar day in `CLUB_TZ`; tonight's answers close at 20:10. Each date has its own answer. Updates the attendance list. Applies the change to existing assignments only if all draw limits remain valid; otherwise retains the previous teams and sets `needsRedraw`. Repeating the same answer is a no-op |
 | `POST /game/:date/draw` | leaders, admins | `{ "n": 3 }` | the updated view, plus `notifying`: how many devices are being told |
 | `DELETE /game/:date/draw` | leaders, admins | — | takes the teams back and reopens answers |
-| `PUT /game/:date/assignment` | leaders, admins | `{ "id": "player-id", "team": 0, "position": "h" }` (team or position may be omitted) | updated view. Moves one player to an existing zero-based team and/or changes their session position; `409` if no draw exists |
+| `PUT /game/:date/assignment` | leaders, admins | `{ "id": "player-id", "team": 0, "position": "h" }` (team or position may be omitted) | updated view. Moves the player and their attending registered teammates to an existing zero-based team and/or changes their session position; `409` if no draw exists, a redraw is pending, or the move would violate size/group/Fris Index limits. Rejected moves do not change saved assignments |
 
-A draw is always **Fair teams** over everyone who answered `in`: size, tier,
-gender and position, using `assets/engine.js`. A player not linked to the squad list
-plays as unclassified. The draw stores each player's id, so the team a player
-is shown is always their own.
+A draw is always **Fair teams** over everyone who answered `in`, using the
+shared `assets/engine.js` in the server and local preview. T1/T2/T3/T4 have
+base values 4/3/2/1. Members without a linked roster entry use T4. Registered
+teammates who attend are indivisible units; absent teammates contribute
+neither headcount nor points.
+
+Each registered group receives at most one bonus, taking the highest
+eligible value among its attending members: two or three T1s add 3, two or
+three T2s add 2, two or three T3s add 1, and T4s add 0. Having both T1 and T2
+also qualifies for 2; other mixed-tier pairs do not. Bonuses never stack.
+Thus T1+T1+T2 scores 14, and a T2 pair plus solo T1/T3/T3 scores 16.
+
+The sum is the field team's **Fris Index**. Any two field teams must differ
+by at most 1 in total headcount and at most 2 in Fris Index. Per-tier
+headcounts may differ. The solver searches for the smallest index gap,
+then improves gender ratios while preserving the constraints. It searches
+whole units with pruning and a bounded budget; if it cannot produce a valid
+result it returns an error, retaining any previous draw. A search limit is
+distinguished internally from a proven impossible allocation.
+
+Late signups or departures that invalidate existing assignments save the
+new attendance but retain the previous team snapshot. The game view exposes
+`needsRedraw`; admins also receive `redrawReason` and see a redraw notice.
+A new successful draw clears these flags. A member awaiting their first
+assignment sees that the updated teams are pending. The draw stores each
+player's account id and registered group id; group ids and tiers are only
+included in admin views.
 
 `mine` also includes `position` and `players: [{ id, name, position }]` for
 the player's own team. No tiers or other teams are included. Admin team rows

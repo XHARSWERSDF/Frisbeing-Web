@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap">
-<link rel="stylesheet" href="assets/brand.css?v=167">
+<link rel="stylesheet" href="assets/brand.css?v=181">
 </head>
 <body>
 
@@ -47,6 +47,14 @@
         <button type="button" id="refreshMemberOrder">Refresh list</button>
       </div>
       <div class="member-list" id="memberList"></div>
+      <section class="panel admin-only existing-teams-panel" id="existingTeamsPanel" hidden aria-labelledby="existingTeamsHeading">
+        <div class="panel-hd">
+          <h3 id="existingTeamsHeading">Existing teams</h3>
+          <button class="btn" id="refreshExistingTeams" type="button"><span>Refresh</span></button>
+        </div>
+        <div class="existing-teams-list" id="existingTeamsList" aria-live="polite"></div>
+        <div class="report" id="existingTeamsReport"></div>
+      </section>
       <div class="report" id="unpublished" hidden></div>
     </div>
   </section>
@@ -78,20 +86,6 @@
         <div class="report" id="rosterReport"></div>
       </div>
 
-      <div class="panel admin-only">
-        <div class="panel-hd">
-          <h3>Publish to the website</h3>
-        </div>
-        <p class="hint">Publish downloads the updated member list for the website. Import restores a saved list.</p>
-        <div class="row" style="margin-top:0">
-          <button class="btn solid" id="exportJson" type="button"><span>Publish roster</span></button>
-          <label class="btn" for="importJson" style="margin:0"><span>Import roster</span></label>
-          <input type="file" id="importJson" accept="application/json,.json" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
-          <button class="btn spacer" id="clearRoster" type="button"><span>Delete everyone</span></button>
-        </div>
-        <div class="report" id="backupReport"></div>
-      </div>
-
       <div class="panel" id="accountsPanel" hidden>
         <div class="panel-hd">
           <h3>Accounts</h3>
@@ -106,15 +100,16 @@
 </div>
 
 <script src="assets/server-config.js"></script>
-<script src="assets/engine.js?v=77"></script>
+<script src="assets/engine.js?v=78"></script>
 <script src="assets/store.js?v=91"></script>
 <script src="assets/auth-config.js"></script>
 <script src="assets/auth.js?v=3"></script>
-<script src="assets/preview-mode.js?v=18"></script>
-<script src="assets/navigation.js?v=9"></script>
-<script src="assets/motion.js?v=103"></script>
-<script src="assets/pwa.js"></script>
-<script src="assets/roster.js?v=86"></script>
-<script src="assets/accounts.js?v=2"></script>
+<script src="assets/teammate-rules.js?v=1"></script>
+<script src="assets/preview-mode.js?v=24"></script>
+<script src="assets/navigation.js?v=12"></script>
+<script src="assets/motion.js?v=104"></script>
+<script src="assets/pwa.js?v=2"></script>
+<script src="assets/roster.js?v=89"></script>
+<script src="assets/accounts.js?v=3"></script>
 </body>
 </html>

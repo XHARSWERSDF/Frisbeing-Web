@@ -8,17 +8,10 @@
 
   var FB = {};
 
-  /* Tiers are T1 (strongest), T2, T3 (developing). The codes A/I/B are kept
-     internally so nothing downstream had to change; only the display name
-     and the accepted words moved to T1/T2/T3. A=T1, I=T2, B=T3.
-
-     U (unclassified) marks members awaiting a tier and people on tonight's
-     list who are not on the roster at all: they weigh the
-     same as T3 and go wherever T3 goes, but are dealt as their own group so
-     every team gets an even share of the unknowns. */
+  /* Internal tier codes: A=T1, I=T2, B=T3, U=T4. */
   FB.TIERS = ["A", "I", "B", "U"];
   FB.TIER_NAME = { A: "T1", I: "T2", B: "T3", U: "T4" };
-  FB.WEIGHT = { A: 3, I: 2, B: 1, U: 1 };
+  FB.WEIGHT = { A: 4, I: 3, B: 2, U: 1 };
   FB.POSITION_NAME = { h: "Handle", c: "Cutter" };
   FB.parsePosition = function (raw) {
     var v = norm(raw);
@@ -33,7 +26,7 @@
       label: "Fair teams",
       tiers: ["A", "I", "B"],
       anchorA: 0,
-      blurb: "Everyone who turned up, balanced by size, tier, gender and Handle / Cutter position."
+      blurb: "Keep attending teammates together, balance the Fris Index, total size and gender, with an index gap of at most 2."
     },
     tournament: {
       key: "tournament",
@@ -348,10 +341,100 @@
   }
   FB.shuffle = shuffle;
 
+  FB.teammateBonus = function (players) {
+    var tiers = { A: 0, I: 0, B: 0, U: 0 };
+    players.forEach(function (p) { tiers[p.tier in tiers ? p.tier : "U"]++; });
+    // One bonus per registered teammate group: the highest eligible bonus.
+    return Math.max(tiers.A >= 2 ? 3 : 0, tiers.I >= 2 ? 2 : 0,
+      tiers.B >= 2 ? 1 : 0, tiers.A >= 1 && tiers.I >= 1 ? 2 : 0);
+  };
+
   function score(team) {
-    return team.reduce(function (s, p) { return s + (FB.WEIGHT[p.tier] || 1); }, 0);
+    var groups = new Map(), total = 0;
+    team.forEach(function (p) {
+      total += FB.WEIGHT[p.tier] || 1;
+      if (!p.teammateGroupId) return;
+      if (!groups.has(p.teammateGroupId)) groups.set(p.teammateGroupId, []);
+      groups.get(p.teammateGroupId).push(p);
+    });
+    groups.forEach(function (members) { total += FB.teammateBonus(members); });
+    return total;
   }
   FB.score = score;
+  FB.frisIndex = score;
+
+  // Only people supplied in the attendance list participate in a group.
+  FB.attendanceUnits = function (players) {
+    var units = [], grouped = new Map();
+    players.forEach(function (p) {
+      if (!p.teammateGroupId) { units.push([p]); return; }
+      if (!grouped.has(p.teammateGroupId)) { var unit = []; grouped.set(p.teammateGroupId, unit); units.push(unit); }
+      grouped.get(p.teammateGroupId).push(p);
+    });
+    return units;
+  };
+
+  FB.drawBalance = function (teams) {
+    function spread(values) { return values.length ? Math.max.apply(null, values) - Math.min.apply(null, values) : 0; }
+    var stats = teams.map(counts), scores = teams.map(score), groupTeams = new Map(), split = false;
+    teams.forEach(function (team, i) { team.forEach(function (p) {
+      if (!p.teammateGroupId) return;
+      if (groupTeams.has(p.teammateGroupId) && groupTeams.get(p.teammateGroupId) !== i) split = true;
+      groupTeams.set(p.teammateGroupId, i);
+    }); });
+    return { sizeGap: spread(teams.map(function (team) { return team.length; })),
+      tierGaps: FB.TIERS.map(function (tier) { return spread(stats.map(function (c) { return c[tier]; })); }),
+      frisIndex: scores, frisGap: spread(scores), splitTeammates: split };
+  };
+
+  FB.drawError = function (teams) {
+    var balance = FB.drawBalance(teams);
+    if (balance.splitTeammates) return "Attending teammates must stay on the same team.";
+    if (teams.some(function (team) { return !team.length; })) return "Every team needs at least one player. Draw teams again.";
+    if (balance.sizeGap > 1) return "The total number of players must differ by at most 1 between any two teams.";
+    if (balance.frisGap > 2) return "The Fris Index must differ by at most 2 between any two teams.";
+    return null;
+  };
+
+  FB.moveTeamMember = function (teams, id, target) {
+    if (!Number.isInteger(target) || !teams[target]) return { error: "Choose an existing team." };
+    var player = teams.reduce(function (all, team) { return all.concat(team); }, []).find(function (p) { return p.id === id; });
+    if (!player) return { error: "That player is no longer on a team. Refresh and try again." };
+    var moved = [];
+    var candidate = teams.map(function (team) { return team.filter(function (p) {
+      var moving = p.id === id || (player.teammateGroupId && p.teammateGroupId === player.teammateGroupId);
+      if (moving) moved.push(p);
+      return !moving;
+    }); });
+    candidate[target] = candidate[target].concat(moved);
+    var error = FB.drawError(candidate);
+    return error ? { error: error } : { teams: candidate, movedIds: moved.map(function (p) { return p.id; }) };
+  };
+
+  // Retain existing assignments where the latest attendance still fits.
+  // The caller keeps the old snapshot when a redraw is needed.
+  FB.refreshDrawAttendance = function (teams, players) {
+    var current = new Map(players.map(function (p) { return [p.id, p]; })), assigned = new Set();
+    var candidate = teams.map(function (team) { return team.filter(function (p) { return current.has(p.id); }).map(function (p) {
+      assigned.add(p.id);
+      return Object.assign({}, current.get(p.id), { position: FB.position(p) });
+    }); });
+    FB.attendanceUnits(players.filter(function (p) { return !assigned.has(p.id); })).forEach(function (unit) {
+      var existing = unit[0].teammateGroupId && candidate.findIndex(function (team) {
+        return team.some(function (p) { return p.teammateGroupId === unit[0].teammateGroupId; });
+      });
+      var target = typeof existing === "number" && existing >= 0 ? existing : -1, bestCost = Infinity;
+      if (target < 0) candidate.forEach(function (team, i) {
+        team.push.apply(team, unit);
+        var balance = FB.drawBalance(candidate);
+        var cost = Math.max(0, balance.sizeGap - 1) * 10000 + Math.max(0, balance.frisGap - 2) * 100 + balance.frisGap;
+        team.splice(team.length - unit.length, unit.length);
+        if (cost < bestCost) { bestCost = cost; target = i; }
+      });
+      if (target >= 0) candidate[target].push.apply(candidate[target], unit);
+    });
+    return { teams: candidate, reason: FB.drawError(candidate) };
+  };
 
   function counts(team) {
     /* tiers in capitals; lower-case u is "gender not set", not unclassified */
@@ -542,45 +625,137 @@
     return teams;
   };
 
+  /* Assign complete attendance units. Hard constraints are checked during
+     search; no greedy fallback can silently publish an invalid draw. */
+  FB.fairDraft = function (players, n, options) {
+    options = options || {};
+    var total = players.length, minSize = Math.floor(total / n), maxSize = Math.ceil(total / n);
+    var units = shuffle(FB.attendanceUnits(players).map(function (members) {
+      var c = counts(members);
+      return { members: members, size: members.length, score: score(members),
+        tiers: FB.TIERS.map(function (tier) { return c[tier]; }), genders: [c.f, c.m, c.u], positions: [c.h, c.c] };
+    })).sort(function (a, b) { return b.size - a.size || b.score - a.score; });
+    if (units.some(function (u) { return u.size > maxSize; })) {
+      return { error: "Attending teammates cannot fit together while keeping team sizes within 1. Choose fewer teams or adjust attendance.", code: "DRAW_CONSTRAINTS" };
+    }
+    var sumScore = units.reduce(function (sum, u) { return sum + u.score; }, 0);
+    var minScore, maxScore;
+    var totalTiers = FB.TIERS.map(function (tier) { return players.filter(function (p) { return p.tier === tier; }).length; });
+    var totalGenders = ["f", "m", ""].map(function (g) { return players.filter(function (p) { return genderKey(p) === g; }).length; });
+    var targets = Array.from({ length: n }, function (_, i) { return minSize + (i < total % n ? 1 : 0); });
+    var remaining = Array(units.length + 1);
+    remaining[units.length] = { size: 0, score: 0 };
+    for (var k = units.length - 1; k >= 0; k--) {
+      var next = remaining[k + 1], unit = units[k];
+      remaining[k] = { size: next.size + unit.size, score: next.score + unit.score };
+    }
+    var nodes = 0, limit = options.maxNodes || 100000, exhausted = false, anyExhausted = false, answer = null, winningGap = null;
+    function blank() { return { units: [], size: 0, score: 0, tiers: [0, 0, 0, 0], genders: [0, 0, 0], positions: [0, 0] }; }
+    function add(team, unit, sign) {
+      team.size += sign * unit.size; team.score += sign * unit.score;
+      ["tiers", "genders", "positions"].forEach(function (key) {
+        unit[key].forEach(function (count, i) { team[key][i] += sign * count; });
+      });
+    }
+    function spread(values) { return Math.max.apply(null, values) - Math.min.apply(null, values); }
+    var startGap = sumScore % n ? 1 : 0;
+    var lastGap = 2;
+    for (var gap = startGap; gap <= lastGap && !answer; gap++) {
+      exhausted = false;
+      var roundNodes = 0;
+      minScore = Math.ceil((sumScore - gap * (n - 1)) / n);
+      maxScore = Math.floor((sumScore + gap * (n - 1)) / n);
+      if (units.some(function (unit) { return unit.score > maxScore; })) continue;
+      var teams = targets.map(blank), failed = new Set();
+      function signature(team, i) { return [targets[i], team.size, team.score].join(","); }
+      function search(at) {
+        nodes++;
+        if (++roundNodes > limit) { exhausted = true; anyExhausted = true; return false; }
+        if (at === units.length) {
+          if (teams.some(function (team, i) { return team.size !== targets[i]; }) || spread(teams.map(function (team) { return team.score; })) > gap) return false;
+          answer = teams; winningGap = gap; return true;
+        }
+        var rest = remaining[at], scoreDeficit = 0;
+        for (var i = 0; i < n; i++) {
+          var team = teams[i], slots = targets[i] - team.size;
+          if (team.size + rest.size < targets[i] || team.score + rest.score < minScore || team.score + slots > maxScore || team.score + slots * 6 < minScore) return false;
+          scoreDeficit += Math.max(0, minScore - team.score);
+        }
+        if (scoreDeficit > rest.score) return false;
+        var key = at + ":" + teams.map(signature).sort().join(";");
+        if (failed.has(key)) return false;
+        var unit = units[at], seen = new Set();
+        var order = shuffle(teams.map(function (_, i) { return i; })).sort(function (a, b) {
+          function cost(team, i) {
+            var tierCost = unit.tiers.reduce(function (sum, count, t) { return sum + count * team.tiers[t] / Math.max(1, totalTiers[t]); }, 0);
+            var genderCost = unit.genders.reduce(function (sum, count, g) { return sum + count * team.genders[g] / Math.max(1, totalGenders[g]); }, 0);
+            return team.score / Math.max(1, maxScore) * 100 + team.size / targets[i] * 20 + genderCost + tierCost;
+          }
+          return cost(teams[a], a) - cost(teams[b], b);
+        });
+        for (var o = 0; o < order.length && !exhausted; o++) {
+          var index = order[o], dest = teams[index], stateKey = signature(dest, index);
+          if (seen.has(stateKey)) continue;
+          seen.add(stateKey);
+          if (dest.size + unit.size > targets[index] || dest.score + unit.score > maxScore) continue;
+          add(dest, unit, 1); dest.units.push(unit);
+          if (search(at + 1)) return true;
+          dest.units.pop(); add(dest, unit, -1);
+        }
+        if (!exhausted) failed.add(key);
+        return false;
+      }
+      search(0);
+    }
+    if (!answer) return { code: anyExhausted ? "DRAW_SEARCH_LIMIT" : "DRAW_CONSTRAINTS", error: anyExhausted
+      ? "Could not find a valid draw. Try again, choose fewer teams, or adjust attendance."
+      : "No draw can keep attending teammates together, keep total team sizes within 1, and keep the Fris Index gap within 2. Change the team count or attendance." };
+
+    // Improve the Fris Index first, then gender ratios, retaining hard limits.
+    // Complete units move together, so a refinement can never split buddies.
+    function metric() {
+      var tierCost = 0, genderCost = 0, positionCost = 0, indexCost = 0;
+      answer.forEach(function (team) {
+        team.tiers.forEach(function (count) { tierCost += count * count; });
+        team.genders.forEach(function (count, g) { genderCost += Math.pow(count * total - totalGenders[g] * team.size, 2); });
+        team.positions.forEach(function (count) { positionCost += count * count; });
+        indexCost += team.score * team.score;
+      });
+      return [spread(answer.map(function (team) { return team.score; })), indexCost, genderCost, tierCost, positionCost];
+    }
+    function less(a, b) { for (var i = 0; i < a.length; i++) { if (a[i] !== b[i]) return a[i] < b[i]; } return false; }
+    for (var pass = 0; pass < 60; pass++) {
+      var best = null, bestMetric = metric();
+      for (var a = 0; a < n; a++) for (var b = a + 1; b < n; b++) {
+        for (var x = 0; x < answer[a].units.length; x++) for (var y = 0; y < answer[b].units.length; y++) {
+          var u = answer[a].units[x], v = answer[b].units[y];
+          var sa = answer[a].size - u.size + v.size, sb = answer[b].size - v.size + u.size;
+          if (sa < minSize || sa > maxSize || sb < minSize || sb > maxSize) continue;
+          add(answer[a], u, -1); add(answer[a], v, 1); add(answer[b], v, -1); add(answer[b], u, 1);
+          if (spread(answer.map(function (team) { return team.score; })) <= 2) {
+            var candidate = metric();
+            if (candidate[0] <= winningGap && less(candidate, bestMetric)) { bestMetric = candidate; best = [a, x, b, y]; }
+          }
+          add(answer[a], v, -1); add(answer[a], u, 1); add(answer[b], u, -1); add(answer[b], v, 1);
+        }
+      }
+      if (!best) break;
+      var first = answer[best[0]], second = answer[best[2]], u = first.units[best[1]], v = second.units[best[3]];
+      add(first, u, -1); add(first, v, 1); add(second, v, -1); add(second, u, 1);
+      first.units[best[1]] = v; second.units[best[3]] = u;
+    }
+    var result = shuffle(answer.map(function (team) { return team.units.reduce(function (members, unit) { return members.concat(unit.members); }, []); }));
+    return { teams: result, balance: FB.drawBalance(result), searchNodes: nodes };
+  };
+
   FB.sort = function (players, modeKey, n) {
     var built = FB.build(players, modeKey, n);
     if (built.error) return built;
-    var teams = FB.draft(built, n);
     if (modeKey === "fair") {
-      /* Tidy gender distribution with size-preserving swaps. Keep the tier
-         and position spreads achieved by the deal intact. */
-      for (var pass = 0; pass < players.length; pass++) {
-        var stats = teams.map(counts), best = null, bestGain = 0;
-        teams.forEach(function (a, i) {
-          teams.forEach(function (b, j) {
-            if (j <= i) return;
-            a.forEach(function (p, x) {
-              b.forEach(function (q, y) {
-                var gp = genderKey(p) || "u", gq = genderKey(q) || "u";
-                if (gp === gq) return;
-                var gain = 2 * (stats[i][gp] - stats[j][gp] + stats[j][gq] - stats[i][gq] - 2);
-                if (gain <= bestGain) return;
-                var delta = {};
-                [p.tier, FB.position(p)].forEach(function (k) { delta[k] = (delta[k] || 0) - 1; });
-                [q.tier, FB.position(q)].forEach(function (k) { delta[k] = (delta[k] || 0) + 1; });
-                var safe = Object.keys(delta).every(function (k) {
-                  var before = stats.map(function (s) { return s[k]; });
-                  var after = before.slice();
-                  after[i] += delta[k]; after[j] -= delta[k];
-                  return Math.max.apply(null, after) - Math.min.apply(null, after)
-                    <= Math.max(1, Math.max.apply(null, before) - Math.min.apply(null, before));
-                });
-                if (safe) { best = [i, x, j, y]; bestGain = gain; }
-              });
-            });
-          });
-        });
-        if (!best) break;
-        var tmp = teams[best[0]][best[1]];
-        teams[best[0]][best[1]] = teams[best[2]][best[3]];
-        teams[best[2]][best[3]] = tmp;
-      }
+      var result = FB.fairDraft(built.pool.concat(built.unclassified), n);
+      return result.error ? result : Object.assign(built, result);
     }
+    var teams = FB.draft(built, n);
     built.teams = FB.refine(teams, built, n);
     return built;
   };

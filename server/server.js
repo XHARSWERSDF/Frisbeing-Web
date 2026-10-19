@@ -32,6 +32,8 @@ const path = require("path");
 const crypto = require("crypto");
 const FB = require(path.join(__dirname, "..", "assets", "engine.js"));
 
+const TeamRules = require("../assets/teammate-rules.js");
+
 const PORT = process.env.PORT || 8080;
 const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, "data.json");
 const ORIGIN = process.env.ORIGIN || "*";
@@ -445,23 +447,30 @@ function teammateGroupView(group, user) {
   };
 }
 
+function teammateInvitationState(invitation, recipient) {
+  const inviter = db.users.find((entry) => entry.id === invitation.fromUserId);
+  if (!inviter || !inviter.member) return { kind: "unavailable", message: "The inviter is no longer available." };
+  return TeamRules.classify(teammateGroupFor(inviter.id), recipient && teammateGroupFor(recipient.id), invitation.groupId);
+}
+
 function teammateInvitationsFor(user) {
-  if (!user.member || teammateGroupFor(user.id)) return [];
+  if (!user.member) return [];
   return db.teammateInvitations.filter((invitation) => invitation.status === "pending" &&
     FB.norm(invitation.toMember) === FB.norm(user.member)).map((invitation) => {
-      const inviter = db.users.find((entry) => entry.id === invitation.fromUserId);
-      return { id: invitation.id, inviterName: invitation.fromName || (inviter && (inviter.member || inviter.name)) || "Member", createdAt: invitation.createdAt };
-    });
+      const current = teammateInvitationState(invitation, user);
+      return { id: invitation.id, inviterName: invitation.fromName || "Member", createdAt: invitation.createdAt, kind: current.kind };
+    }).filter((invitation) => invitation.kind !== "unavailable");
 }
 
 function addTeammateInvitation(fromUser, memberName) {
   const pending = db.teammateInvitations.find((invitation) => invitation.status === "pending" &&
     invitation.fromUserId === fromUser.id && FB.norm(invitation.toMember) === FB.norm(memberName));
-  if (pending) return pending;
+  if (pending && teammateInvitationState(pending, db.users.find((u) => FB.norm(u.member) === FB.norm(memberName))).kind !== "unavailable") return pending;
+  if (pending) pending.status = "unavailable";
   const invitation = {
     id: crypto.randomBytes(8).toString("hex"), fromUserId: fromUser.id,
     fromName: fromUser.member || fromUser.name, toMember: memberName,
-    status: "pending", createdAt: Date.now()
+    status: "pending", createdAt: Date.now(), groupId: (teammateGroupFor(fromUser.id) || {}).id || null
   };
   db.teammateInvitations.push(invitation);
   return invitation;
@@ -522,6 +531,33 @@ function finalizeAttendanceDue(now = Date.now()) {
   if (changed) save();
 }
 
+function passionStarState(user, now = Date.now()) {
+  const today = clubDate(now);
+  const latest = sessionKind(today) && clubMinutes(now) < 21 * 60 ? addDays(today, -1) : today;
+  const cutoff = addDays(today, -KEEP_DAYS);
+  let streak = 0;
+  for (let date = latest; date >= cutoff; date = addDays(date, -1)) {
+    if (!sessionKind(date)) continue;
+    const game = db.games[date];
+    if (!game || !game.attendanceFinalizedAt || !Array.isArray(game.attendance) || !game.attendance.includes(user.id)) break;
+    streak++;
+  }
+  const eligible = (Number(user.attendanceCount) || 0) >= 5 || streak >= 4;
+  let changed = false;
+  if (eligible && !user.passionStarUnlockedAt) {
+    user.passionStarUnlockedAt = now;
+    changed = true;
+  }
+  if (changed) save();
+  return {
+    unlocked: !!user.passionStarUnlockedAt,
+    unseen: !!user.passionStarUnlockedAt && !user.passionStarSeenAt,
+    unlockedAt: user.passionStarUnlockedAt || null,
+    seenAt: user.passionStarSeenAt || null,
+    currentStreak: streak
+  };
+}
+
 function isDateString(s) {
   if (typeof s !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
   const d = new Date(s + "T12:00:00Z");
@@ -566,7 +602,7 @@ function currentName(p) {
 
 /* Everyone who answered Join, shaped the way the sorting engine wants.
    Tier and gender come from their entry on the squad list; anyone not linked
-   to it yet plays as unclassified, weighted like T3. */
+   to it yet plays as T4. Only attending members contribute teammate bonuses. */
 function joinedPlayers(game) {
   const out = [];
   for (const [userId, answer] of Object.entries(game.rsvps)) {
@@ -580,7 +616,8 @@ function joinedPlayers(game) {
       member: entry ? entry.name : null,
       tier: entry ? entry.tier : "U",
       gender: entry ? entry.gender : "",
-      position: FB.position(entry)
+      position: FB.position(entry),
+      teammateGroupId: (teammateGroupFor(user.id) || {}).id || null
     });
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
@@ -607,7 +644,8 @@ function gameView(date, who, today = clubDate()) {
   view.drawn = !!draw;
   if (draw) {
     view.draw = { at: draw.at, n: draw.teams.length };
-    const idx = draw.teams.findIndex((t) => t.some((p) => p.id === who.user.id));
+    view.needsRedraw = !!draw.needsRedraw;
+    const idx = view.me.rsvp === "in" ? draw.teams.findIndex((t) => t.some((p) => p.id === who.user.id)) : -1;
     view.mine = idx < 0 ? null : {
       letter: TEAM_LETTERS[idx],
       members: draw.teams[idx].map(currentName),
@@ -623,8 +661,9 @@ function gameView(date, who, today = clubDate()) {
           .map((u) => ({ id: u.id, name: u.name })).sort((a, b) => a.name.localeCompare(b.name))
       : [];
     if (draw) {
+      view.redrawReason = draw.redrawReason || null;
       view.teams = draw.teams.map((t) => t.map((p) => ({
-        id: p.id, name: currentName(p), member: p.member, tier: p.tier, gender: p.gender, position: FB.position(p)
+        id: p.id, name: currentName(p), member: p.member, tier: p.tier, gender: p.gender, position: FB.position(p), teammateGroupId: p.teammateGroupId || null
       })));
     }
   }
@@ -701,7 +740,11 @@ function pushOne(endpoint) {
 
 function teammateInvitationsSentBy(user) {
   return db.teammateInvitations.filter((invitation) => invitation.status === "pending" && invitation.fromUserId === user.id)
-    .map((invitation) => ({ id: invitation.id, memberName: invitation.toMember, createdAt: invitation.createdAt }));
+    .map((invitation) => {
+      const recipient = db.users.find((entry) => FB.norm(entry.member) === FB.norm(invitation.toMember));
+      const current = teammateInvitationState(invitation, recipient);
+      return { id: invitation.id, memberName: invitation.toMember, createdAt: invitation.createdAt, kind: current.kind, message: current.message };
+    });
 }
 
 /* Fire and forget, so a slow push service never holds up the draw. Returns
@@ -850,10 +893,35 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, {
         role: who.role,
         account: who.user ? accountView(who.user) : null,
+        passionStar: who.user ? passionStarState(who.user) : null,
         teammateGroup: who.user ? teammateGroupView(teammateGroupFor(who.user.id), who.user) : null,
         teammateInvitations: who.user ? teammateInvitationsFor(who.user) : [],
         teammateInvitationsSent: who.user ? teammateInvitationsSentBy(who.user) : []
       });
+    }
+
+    if (route === "/me/passion-star/seen" && req.method === "POST") {
+      finalizeAttendanceDue();
+      const who = whoIs(req);
+      if (!who) return send(res, 401, { error: "Not signed in." });
+      const state = passionStarState(who.user);
+      if (!state.unlocked) return send(res, 409, { error: "The Passion Star has not been unlocked yet." });
+      if (state.unseen) {
+        who.user.passionStarSeenAt = Date.now();
+        save();
+      }
+      return send(res, 200, { seen: true, alreadySeen: !state.unseen });
+    }
+
+    if (route === "/teammate-groups" && req.method === "GET") {
+      const who = whoIs(req);
+      if (!runsTheClub(who)) return refuse(res, who);
+      const teams = db.teammateGroups.map((group) => ({
+        id: group.id,
+        members: group.members.map((id) => db.users.find((user) => user.id === id)).filter(Boolean)
+          .map((user) => ({ name: user.member || user.name }))
+      })).filter((group) => group.members.length > 0);
+      return send(res, 200, { teams });
     }
 
     if (route === "/me/preferences" && req.method === "PUT") {
@@ -886,9 +954,8 @@ const server = http.createServer(async (req, res) => {
       }
       for (const name of names) {
         const target = db.users.find((entry) => entry.member && FB.norm(entry.member) === FB.norm(name));
-        if (target && teammateGroupFor(target.id)) {
-          return send(res, 409, { error: name + " is already in a teammate group." });
-        }
+        const current = TeamRules.classify(group, target && teammateGroupFor(target.id));
+        if (current.kind === "unavailable") return send(res, 409, { error: name + ": " + current.message });
       }
       db.teammateInvitations = db.teammateInvitations.filter((invitation) =>
         invitation.status !== "pending" || invitation.fromUserId !== who.user.id ||
@@ -896,7 +963,9 @@ const server = http.createServer(async (req, res) => {
       who.user.preferredTeammates = names;
       names.forEach((name) => addTeammateInvitation(who.user, name));
       save();
-      return send(res, 200, { preferredTeammates: names, invitationsSent: names.length });
+      const notices = teammateInvitationsSentBy(who.user).filter((entry) => entry.kind === "invite-back")
+        .map((entry) => entry.memberName + ": " + entry.message);
+      return send(res, 200, { preferredTeammates: names, invitationsSent: names.length, notices });
     }
 
     if (route === "/me/teammate-invitations" && req.method === "POST") {
@@ -959,30 +1028,33 @@ const server = http.createServer(async (req, res) => {
         if (!db.roster.some((entry) => FB.norm(entry.name) === FB.norm(who.user.member))) {
           return send(res, 409, { error: "Your account must be linked to the member list before joining a group." });
         }
-        if (teammateGroupFor(who.user.id)) return send(res, 409, { error: "You are already in a teammate group." });
-        let group = teammateGroupFor(inviter.id);
-        if (group && group.leaderId !== inviter.id) return send(res, 409, { error: "The inviter is already in another teammate group." });
-        if (group && group.members.length >= 3) return send(res, 409, { error: "That teammate group is full." });
-        if (!group) {
-          group = { id: crypto.randomBytes(8).toString("hex"), leaderId: inviter.id, members: [inviter.id], createdAt: Date.now() };
-          db.teammateGroups.push(group);
+        const current = teammateInvitationState(invitation, who.user);
+        if (current.kind === "unavailable") return send(res, 409, { error: current.message });
+        if (body.expectedKind && body.expectedKind !== current.kind) {
+          return send(res, 409, { error: "Team membership changed. Review the updated invitation and try again." });
         }
-        if (!group.members.includes(who.user.id)) group.members.push(who.user.id);
-        invitation.status = "accepted";
+        if (current.kind === "invite-back") {
+          // B already has a team: approving A's request sends A an invitation.
+          // It does not move B or add A until A accepts the new invitation.
+          addTeammateInvitation(who.user, inviter.member);
+          invitation.status = "invited-back";
+        } else {
+          let group = teammateGroupFor(inviter.id);
+          if (!group) {
+            group = { id: crypto.randomBytes(8).toString("hex"), leaderId: inviter.id, members: [inviter.id], createdAt: Date.now() };
+            db.teammateGroups.push(group);
+          }
+          group.members.push(who.user.id);
+          invitation.status = "accepted";
+        }
         invitation.respondedAt = Date.now();
-        db.teammateInvitations.forEach((other) => {
-          if (other !== invitation && other.status === "pending" && FB.norm(other.toMember) === FB.norm(who.user.member)) {
-            other.status = "unavailable";
-            other.respondedAt = Date.now();
-          }
-          if (group.members.length >= 3 && other.status === "pending" && other.fromUserId === inviter.id) {
-            other.status = "unavailable";
-            other.respondedAt = Date.now();
-          }
-        });
+        // Other invitations are interpreted against current memberships when
+        // viewed or answered, including requests that now need an invite back.
+
       }
       save();
       return send(res, 200, {
+        invitationAction: invitation.status,
         account: accountView(who.user),
         teammateGroup: teammateGroupView(teammateGroupFor(who.user.id), who.user),
         teammateInvitations: teammateInvitationsFor(who.user),
@@ -1246,12 +1318,14 @@ const server = http.createServer(async (req, res) => {
       if (game.rsvps[who.user.id] === body.status) return send(res, 200, gameView(date, who));
       game.rsvps[who.user.id] = body.status;
       if (game.draw) {
-        if (body.status === "out") {
-          game.draw.teams = game.draw.teams.map((t) => t.filter((p) => p.id !== who.user.id));
-        } else if (!game.draw.teams.some((t) => t.some((p) => p.id === who.user.id))) {
-          const player = joinedPlayers(game).find((p) => p.id === who.user.id);
-          const idx = FB.chooseTeam(game.draw.teams, player);
-          game.draw.teams[idx].push(player);
+        const refreshed = FB.refreshDrawAttendance(game.draw.teams, joinedPlayers(game));
+        if (refreshed.reason) {
+          game.draw.needsRedraw = true;
+          game.draw.redrawReason = refreshed.reason;
+        } else {
+          game.draw.teams = refreshed.teams;
+          game.draw.needsRedraw = false;
+          game.draw.redrawReason = null;
         }
         game.draw.updatedAt = Date.now();
       }
@@ -1289,16 +1363,15 @@ const server = http.createServer(async (req, res) => {
       if (players.length < n) {
         return send(res, 400, { error: players.length + " joined so far - not enough for " + n + " teams." });
       }
-      /* Fair teams: everyone who joined plays, balanced by size, tier,
-         gender and position. The other editions leave people out, which would leave
-         someone who pressed Join with no team to find. */
+      /* Keep attending teammate groups together. The shared engine enforces
+         size and Fris Index limits, then balances gender. */
       const result = FB.sort(players, "fair", n);
       if (result.error) return send(res, 400, { error: result.error });
       game.draw = {
         at: Date.now(),
         by: who.user.email,
         teams: result.teams.map((t) => t.map((p) => ({
-          id: p.id, name: p.name, member: p.member, tier: p.tier, gender: p.gender, position: FB.position(p)
+          id: p.id, name: p.name, member: p.member, tier: p.tier, gender: p.gender, position: FB.position(p), teammateGroupId: p.teammateGroupId || null
         })))
       };
       db.gamesVersion++;
@@ -1334,15 +1407,23 @@ const server = http.createServer(async (req, res) => {
       if (target === source && (body.position === undefined || body.position === FB.position(player))) {
         return send(res, 200, gameView(date, who));
       }
+      let movedIds = [player.id];
       if (target !== source) {
-        game.draw.teams[source] = game.draw.teams[source].filter((p) => p.id !== player.id);
-        game.draw.teams[target].push(player);
+        if (game.draw.needsRedraw) return send(res, 409, { error: "Attendance changed. Draw teams again before moving players." });
+        const currentPlayers = joinedPlayers(game);
+        const currentGroups = new Map(currentPlayers.map((p) => [p.id, p.teammateGroupId]));
+        const candidate = game.draw.teams.map((team) => team.map((p) => Object.assign({}, p, { teammateGroupId: currentGroups.get(p.id) || null })));
+        const moved = FB.moveTeamMember(candidate, player.id, target);
+        if (moved.error) return send(res, 409, { error: moved.error });
+        if (body.position !== undefined) moved.teams[target].find((p) => p.id === player.id).position = body.position;
+        game.draw.teams = moved.teams;
+        movedIds = moved.movedIds;
       }
       if (body.position !== undefined) player.position = body.position;
       game.draw.updatedAt = Date.now();
       db.gamesVersion++;
       save();
-      notifyUsers([player.id]);
+      notifyUsers(movedIds);
       return send(res, 200, gameView(date, who));
     }
 

@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap">
-<link rel="stylesheet" href="assets/brand.css?v=167">
+<link rel="stylesheet" href="assets/brand.css?v=181">
 </head>
 <body data-background-emblem="false">
 <div class="wrap">
@@ -46,12 +46,14 @@
         <section class="career-area">
           <div class="head profile-heading">
             <h2 class="display">My Profile</h2>
-            <button class="invite-notification" id="inviteNotification" type="button" aria-label="New teammate invitation. Jump to invitations" title="New teammate invitation" hidden>
-              <img src="assets/monogram.png" alt="">
-            </button>
+            <div class="profile-notifications">
+              <button class="invite-notification" id="inviteNotification" type="button" aria-label="New teammate invitation. Jump to invitations" title="New teammate invitation" hidden>
+                <img src="assets/monogram.png" alt="">
+              </button>
+            </div>
           </div>
           <div class="panel career-panel">
-            <p class="career-attendance"><strong id="attendanceCount">0</strong><span>Sessions Present</span></p>
+            <p class="career-attendance"><strong id="attendanceCount">0</strong><span>Sessions Present</span><span class="passion-star-title" id="passionStarTitle" hidden>激情之星</span></p>
             <div class="preferred-action-row">
               <button class="btn preferred-trigger" id="preferredOpen" type="button"><span>Preferred teammate</span></button>
               <span class="preferred-action-status" id="preferredActionStatus" role="status" aria-live="polite"></span>
@@ -96,13 +98,30 @@
     <button class="btn solid" id="preferredSave" type="button"><span>Save</span></button>
   </div>
 </dialog>
+<dialog class="passion-star-dialog" id="passionStarDialog" aria-labelledby="passionStarDialogTitle">
+  <button class="passion-star-close" id="passionStarClose" type="button" aria-label="Close award"></button>
+  <div class="passion-star-scene">
+    <div class="passion-star-sky">
+      <div class="passion-star-orbit passion-star-orbit-one" aria-hidden="true"></div>
+      <div class="passion-star-orbit passion-star-orbit-two" aria-hidden="true"></div>
+      <div class="passion-star-rays" aria-hidden="true"></div>
+      <div class="passion-star-emblem" aria-hidden="true">
+        <svg viewBox="0 0 120 120" role="presentation"><path d="M60 4 73.8 42.2 114 44l-31.4 25 10.9 38.5L60 85.4 26.5 107.5 37.4 69 6 44l40.2-1.8L60 4Z"/><circle cx="60" cy="60" r="47"/></svg>
+      </div>
+    </div>
+    <p class="passion-star-kicker">FRISBEING UF · MEMBER HONOUR</p>
+    <h2 class="display" id="passionStarDialogTitle">激情之星</h2>
+    <p class="passion-star-copy">You keep showing up. You make this team what it is.</p>
+  </div>
+</dialog>
 <script src="assets/server-config.js"></script>
 <script src="assets/auth-config.js"></script>
 <script src="assets/auth.js?v=3"></script>
-<script src="assets/preview-mode.js?v=18"></script>
-<script src="assets/navigation.js?v=9"></script>
-<script src="assets/motion.js?v=103"></script>
-<script src="assets/pwa.js"></script>
-<script src="assets/admin.js?v=115"></script>
+<script src="assets/teammate-rules.js?v=1"></script>
+<script src="assets/preview-mode.js?v=24"></script>
+<script src="assets/navigation.js?v=12"></script>
+<script src="assets/motion.js?v=104"></script>
+<script src="assets/pwa.js?v=2"></script>
+<script src="assets/admin.js?v=119"></script>
 </body>
 </html>

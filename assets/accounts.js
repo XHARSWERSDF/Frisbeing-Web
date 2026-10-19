@@ -27,6 +27,10 @@
   }
 
   function allowed() {
+    if (window.FBPreview && FBPreview.active && FBPreview.active()) {
+      var previewRole = FBPreview.role && FBPreview.role();
+      return previewRole === "leader" || previewRole === "admin";
+    }
     return FBStore.serverMode() && window.FBAuth && FBAuth.isAdmin();
   }
 
