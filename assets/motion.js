@@ -173,10 +173,10 @@
       var rect = source.getBoundingClientRect();
       var style = getComputedStyle(source);
       front.save();
-      front.font = style.fontWeight + ' ' + parseFloat(style.fontSize) + 'px ' + style.fontFamily;
+      front.font = style.fontWeight + ' ' + (parseFloat(style.fontSize) * .75) + 'px ' + style.fontFamily;
       front.textAlign = 'center';
       front.textBaseline = 'alphabetic';
-      if ('letterSpacing' in front) front.letterSpacing = (parseFloat(style.letterSpacing) || 0) + 'px';
+      if ('letterSpacing' in front) front.letterSpacing = (parseFloat(style.letterSpacing) * .75 || 0) + 'px';
       front.fillStyle = style.color;
       var text = source.textContent.trim().toUpperCase();
       var metrics = front.measureText(text);

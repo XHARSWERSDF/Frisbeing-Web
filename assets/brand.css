@@ -325,9 +325,9 @@ section { padding: clamp(56px, 8vw, 104px) var(--pad); position: relative; }
   margin: 0 auto 12px;
   filter: drop-shadow(0 10px 30px rgba(0,0,0,.5));
 }
-.hero-lockup { transform: translateX(4px); transform-origin: center center; }
+.hero-lockup { transform: translateX(4px) scale(.75); transform-origin: center center; }
 .hero .inner { transform: translateY(-82px); }
-.hero h1.display { font-size: clamp(44px, 9vw, 108px); }
+.hero h1.display { font-size: clamp(35px, 7.33vw, 88px); }
 .hero .slashes { margin: 20px auto 0; justify-content: center; transform: scale(.67); }
 /* exactly half of h1.display, which is clamp(52px, 11vw, 132px) */
 .hero .hero-sub {
