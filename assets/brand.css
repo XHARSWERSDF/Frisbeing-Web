@@ -1788,14 +1788,18 @@ body.is-public .head.public-only { display: block; }
   .motion-ready .tn-small.motion-born { animation: none !important; }
 }
 
+.club-field-photo { margin: 48px 0 0; scroll-margin-top: 100px; }
+.club-field-photo img { display: block; width: 100%; height: auto; border: 3px solid #000; }
+
 /* ---------------------------------------------------------- Photos page -- */
-.photos-page { padding: clamp(48px, 7vw, 88px) var(--pad); }
-.photos-heading { margin-bottom: 28px; }
-.photos-heading .eyebrow { margin-bottom: 20px; }
-.photos-heading h1 { font-size: clamp(58px, 9vw, 108px); }
-.photos-heading .slashes { margin-top: 24px; }
-.photos-view-switch { display: flex; gap: 4px; width: fit-content; padding: 4px; margin-bottom: 36px; border: 1px solid var(--line); background: var(--ink); }
-.photos-view-switch button { padding: 12px 20px; border: 0; border-radius: 0; background: transparent; color: var(--mist); font: 600 13px/1.4 var(--f-body); cursor: pointer; }
+.photos-page { position: relative; padding: 0 var(--pad) 40px; }
+.photos-page-title { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.photos-view-switch {
+  position: absolute; z-index: 3; top: 16px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 4px; width: max-content; max-width: calc(100% - 32px); padding: 4px; margin: 0;
+  border: 1px solid var(--line); background: rgba(8,21,15,.94); box-shadow: 0 4px 18px rgba(0,0,0,.2);
+}
+.photos-view-switch button { padding: 10px 16px; border: 0; border-radius: 0; background: transparent; color: var(--mist); font: 600 12px/1.4 var(--f-body); white-space: nowrap; cursor: pointer; }
 .photos-view-switch button[aria-pressed="true"] { background: var(--chalk); color: var(--ink); }
 .photos-view-switch button:hover { color: var(--chalk); background: var(--green); }
 .photos-view-switch button[aria-pressed="true"]:hover { color: var(--ink); background: var(--silver); }
@@ -1809,8 +1813,6 @@ body.is-public .head.public-only { display: block; }
 .photo-belts { display: none; }
 .is-photo-conveyor .photos-page { padding-inline: 0; padding-bottom: 0; }
 .is-photo-conveyor .photos-page > .inner { max-width: none; }
-.is-photo-conveyor .photos-heading { margin-inline: var(--pad); }
-.is-photo-conveyor .photos-view-switch { margin-inline: var(--pad); max-width: calc(100% - var(--pad) * 2); }
 .photo-gallery[data-view="conveyor"] {
   position: relative; width: 100%; height: calc(100svh - var(--photos-nav-height, 74px)); min-height: 360px;
   background: #000; overflow: hidden;

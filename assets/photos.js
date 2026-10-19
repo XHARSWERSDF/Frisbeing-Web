@@ -12,7 +12,6 @@
   var tracks = [];
   var visible = true;
   var mode = 'grid';
-  var savedScroll = window.scrollY;
   try {
     if (localStorage.getItem('frisbeing.photos.view') === 'conveyor') mode = 'conveyor';
   } catch (ignore) { /* The gallery also works without browser storage. */ }
@@ -64,8 +63,6 @@
     toggle.hidden = mode !== 'conveyor' || reduced.matches;
   }
   function selectMode(next) {
-    if (next === 'conveyor' && mode !== 'conveyor') savedScroll = window.scrollY;
-    var leavingConveyor = mode === 'conveyor' && next !== 'conveyor';
     mode = next;
     gallery.dataset.view = mode;
     document.body.classList.toggle('is-photo-conveyor', mode === 'conveyor');
@@ -75,7 +72,6 @@
     if (mode === 'conveyor') buildBelts();
     fit();
     update();
-    if (leavingConveyor) window.scrollTo(0, savedScroll);
     try { localStorage.setItem('frisbeing.photos.view', mode); } catch (ignore) { /* Optional preference. */ }
   }
   buttons.forEach(function (button) {
