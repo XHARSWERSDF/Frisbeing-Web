@@ -1806,23 +1806,28 @@ body.is-public .head.public-only { display: block; }
 .photo-conveyor-group img { display: block; width: 100%; height: auto; border-radius: 0; }
 .photo-gallery[data-view="grid"] .photo-conveyor-group { columns: 3; column-gap: 12px; }
 .photo-gallery[data-view="grid"] figure { break-inside: avoid; margin-bottom: 12px; }
-.photo-gallery[data-view="grid"] .photo-conveyor-copy { display: none; }
-.photo-gallery[data-view="conveyor"] {
-  width: min(100%, 640px); height: min(740px, 75svh); min-height: 360px; margin-inline: auto;
-  overflow: auto; isolation: isolate;
-  -webkit-mask-image: linear-gradient(transparent, #000 7%, #000 93%, transparent);
-  mask-image: linear-gradient(transparent, #000 7%, #000 93%, transparent);
+.photo-belts { display: none; }
+body.is-photo-conveyor { overflow: hidden; }
+.is-photo-conveyor .nav, .is-photo-conveyor .photos-heading, .is-photo-conveyor .site-footer { display: none; }
+.is-photo-conveyor .photos-view-switch {
+  position: fixed; z-index: 61; top: max(16px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+  margin: 0; width: max-content; max-width: calc(100% - 32px); background: rgba(8,21,15,.94); box-shadow: 0 8px 30px rgba(0,0,0,.3);
 }
-.photo-gallery.is-ready[data-view="conveyor"] { overflow: hidden; }
-.photo-gallery[data-view="conveyor"] .photo-conveyor-group { display: flex; flex-direction: column; gap: 0; }
-.photo-gallery[data-view="conveyor"] figure { flex: none; border-top: 0; }
-.photo-gallery[data-view="conveyor"] img { max-height: 480px; object-fit: contain; }
-.photo-gallery.is-ready[data-view="conveyor"] .photo-conveyor { animation: photo-conveyor-rise var(--photo-cycle) linear infinite; animation-play-state: paused; will-change: transform; }
-.photo-gallery.is-ready.is-active:not(.is-paused)[data-view="conveyor"] .photo-conveyor { animation-play-state: running; }
+.is-photo-conveyor .photos-view-switch button { flex: 0 1 auto; white-space: nowrap; }
+.photo-gallery[data-view="conveyor"] { position: fixed; inset: 0; z-index: 60; background: #000; overflow: hidden; }
+.photo-gallery[data-view="conveyor"] > .photo-conveyor { display: none; }
+.photo-gallery[data-view="conveyor"] .photo-belts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; width: 100%; height: 100%; }
+.photo-belt { min-width: 0; height: 100%; overflow: hidden; }
+.photo-belt-group { display: flex; flex-direction: column; gap: 0; }
+.photo-belt figure { margin: 0; flex: none; border: 0; border-bottom: 3px solid #000; background: #000; }
+.photo-belt img { display: block; width: 100%; height: auto; max-height: 75svh; object-fit: contain; }
+.photo-belt-track { animation: photo-conveyor-rise var(--photo-cycle, 220s) linear infinite; animation-play-state: paused; will-change: transform; }
+.photo-belt:nth-child(2) .photo-belt-track { animation-direction: reverse; }
+.photo-gallery.is-active:not(.is-paused)[data-view="conveyor"] .photo-belt-track { animation-play-state: running; }
 .photo-rail-toggle {
-  position: absolute; z-index: 1; top: 52px; right: 12px;
-  padding: 9px 12px; border: 1px solid rgba(192,192,191,.4); border-radius: 3px;
-  color: #f5f7f1; background: rgba(8,21,15,.92); font: 600 11px/1.4 var(--f-body); cursor: pointer;
+  position: fixed; z-index: 61; bottom: max(16px, env(safe-area-inset-bottom)); left: 16px;
+  padding: 12px 16px; border: 1px solid rgba(192,192,191,.6); border-radius: 3px;
+  color: #f5f7f1; background: rgba(8,21,15,.94); font: 600 12px/1.4 var(--f-body); cursor: pointer;
 }
 .photo-rail-toggle:hover { background: #1c4734; }
 @keyframes photo-conveyor-rise { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(0, -50%, 0); } }
@@ -1841,9 +1846,9 @@ body.is-public .head.public-only { display: block; }
   .has-user-session .nav a.lnk { font-size: 11px; letter-spacing: .02em; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .photo-gallery.is-ready[data-view="conveyor"] { overflow-y: auto; }
-  .photo-gallery.is-ready[data-view="conveyor"] .photo-conveyor { animation: none !important; will-change: auto; }
-  .photo-conveyor-copy { display: none; }
+  .photo-belt { overflow-y: auto; }
+  .photo-belt-track { animation: none !important; will-change: auto; }
+  .photo-belt-copy { display: none; }
 }
 
 @media (max-width: 600px) {
