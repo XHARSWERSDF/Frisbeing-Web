@@ -31,6 +31,12 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const FB = require(path.join(__dirname, "..", "assets", "engine.js"));
+const AttendanceAwards = require("../assets/attendance-awards.js");
+function passionSupermanState(user) {
+  const result = AttendanceAwards.reconcile(db.roster, db.users);
+  if (result.changed) save();
+  return result.states[user.id];
+}
 
 const TeamRules = require("../assets/teammate-rules.js");
 
@@ -668,11 +674,12 @@ function gameView(date, who, today = clubDate()) {
   const managesClub = !!who && runsTheClub(who);
   const published = !!draw && draw.published !== false;
   view.me = { rsvp: (game && game.rsvps[who.user.id]) || null };
+  view.mine = null;
   view.drawn = published;
   view.hasDraft = !!draw && !published && managesClub;
+  if (draw) view.needsRedraw = !!draw.needsRedraw;
   if (draw && (published || managesClub)) {
     view.draw = { at: draw.at, n: draw.teams.length };
-    view.needsRedraw = !!draw.needsRedraw;
     const idx = published && view.me.rsvp === "in" ? draw.teams.findIndex((t) => t.some((p) => p.id === who.user.id)) : -1;
     view.mine = idx < 0 ? null : {
       letter: TEAM_LETTERS[idx],
@@ -986,11 +993,22 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, {
         role: who.role,
         account: who.user ? accountView(who.user) : null,
+        passionSuperman: who.user ? passionSupermanState(who.user) : null,
         passionStar: who.user ? passionStarState(who.user) : null,
         teammateGroup: who.user ? teammateGroupView(teammateGroupFor(who.user.id), who.user) : null,
         teammateInvitations: who.user ? teammateInvitationsFor(who.user) : [],
         teammateInvitationsSent: who.user ? teammateInvitationsSentBy(who.user) : []
       });
+    }
+
+    if (route === "/me/passion-superman/seen" && req.method === "POST") {
+      const who = whoIs(req);
+      if (!who || !who.user) return send(res, 401, { error: "Not signed in." });
+      finalizeAttendanceDue();
+      const award = passionSupermanState(who.user);
+      if (!award.unlocked) return send(res, 409, { error: "This award belongs to the current attendance top three." });
+      if (award.unseen) { who.user.passionSupermanSeenAt = Date.now(); save(); }
+      return send(res, 200, { seen: true, alreadySeen: !award.unseen });
     }
 
     if (route === "/me/passion-star/seen" && req.method === "POST") {
@@ -1226,6 +1244,16 @@ const server = http.createServer(async (req, res) => {
       db.gearProducts.splice(index, 1);
       save();
       return send(res, 200, { removed: true, id });
+    }
+
+    if (route === "/roster-attendance" && req.method === "GET") {
+      const who = whoIs(req);
+      if (!runsTheClub(who)) return refuse(res, who);
+      finalizeAttendanceDue();
+      return send(res, 200, { members: db.roster.map((member) => {
+        const account = db.users.find((user) => user.member && FB.norm(user.member) === FB.norm(member.name));
+        return { name: member.name, attendanceCount: Math.max(0, Number(account && account.attendanceCount) || 0) };
+      }) });
     }
 
     if (route === "/roster" && req.method === "PUT") {

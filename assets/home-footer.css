@@ -1,0 +1,88 @@
+/* ---------------------------------------------------------- site footer -- */
+.site-footer {
+  scroll-margin-top: 90px;
+  position: relative;
+  z-index: 2;
+  padding: 64px var(--pad) 28px;
+  border-top: 1px solid var(--line);
+  background: #08150f;
+}
+.site-footer .footer-inner { max-width: var(--maxw); margin: 0 auto; }
+.footer-invite {
+  position: relative; isolation: isolate; overflow: hidden;
+  display: flex; align-items: center; justify-content: space-between; gap: 32px;
+  padding: clamp(26px, 4vw, 48px);
+  margin-bottom: 64px;
+  background: #153b2b;
+  border: 1px solid #315c45;
+  border-radius: 12px;
+}
+.footer-invite::before {
+  content: ""; position: absolute; inset: 0 0 0 25%; z-index: -2;
+  background: url("photos/next-game.jpg") center 46% / cover no-repeat;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 38%);
+  mask-image: linear-gradient(90deg, transparent, #000 38%);
+  opacity: .94;
+}
+.footer-invite::after {
+  content: ""; position: absolute; inset: 0; z-index: -1;
+  background: linear-gradient(90deg, #153b2b 12%, rgba(21,59,43,.88) 30%, rgba(15,42,30,.42) 55%, rgba(8,21,15,.16));
+}
+.footer-invite h2 {
+  margin: 10px 0 14px;
+  font-size: clamp(36px, 5vw, 64px);
+  line-height: 1.05;
+  color: var(--chalk);
+}
+.footer-invite-copy { margin: 0; color: #b8ccbd; font: 400 14px/1.62 var(--f-body); letter-spacing: normal; }
+.footer-invite .btn { flex-shrink: 0; white-space: nowrap; }
+.footer-invite .footer-join {
+  padding: 15px 48px;
+  font-family: var(--f-display);
+  font-size: 17px;
+  letter-spacing: .12em;
+  box-shadow: 0 10px 28px rgba(0,0,0,.3);
+}
+.footer-join::after {
+  content: '↗';
+  display: inline-block;
+  margin-left: 12px;
+  font: 700 15px/1 var(--f-body);
+  transform: skewX(11deg) translateY(-1px);
+}
+.footer-grid { display: grid; grid-template-columns: 1.4fr .8fr .8fr 1fr; gap: 32px; }
+.footer-brand-link { display: inline-flex; align-items: center; gap: 14px; color: var(--chalk); text-decoration: none; }
+.footer-brand-link img { width: 30px; height: 46px; object-fit: contain; }
+.footer-brand-link span { font: 400 23px/1 var(--f-display); transform: skewX(-9deg); }
+.footer-brand > p { max-width: 245px; margin: 20px 0 0; color: var(--mist); font-size: 13px; line-height: 1.8; }
+.footer-grid h3 { margin: 0 0 20px; font: 700 13px/1.5 var(--f-body); text-transform: none; color: var(--chalk); }
+.footer-links { display: flex; flex-direction: column; align-items: flex-start; gap: 11px; }
+.footer-grid a:not(.footer-brand-link) { color: #9caf9f; font-size: 13px; line-height: 1.7; text-decoration: none; text-underline-offset: 4px; }
+.footer-grid a:hover, .footer-grid a:focus-visible { color: var(--chalk); text-decoration: underline; }
+.footer-contact p { margin: 0 0 10px; color: #9caf9f; font-size: 13px; line-height: 1.7; }
+.footer-contact .footer-leaders { margin-top: 14px; }
+.footer-contact a { overflow-wrap: anywhere; }
+.footer-bottom { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px 24px; border-top: 1px solid var(--line); margin-top: 48px; padding-top: 24px; }
+.footer-bottom p { margin: 0; color: #82998a; font-size: 11px; line-height: 1.8; }
+.footer-bottom .footer-heart { color: #a4bba7; }
+@media (max-width: 900px) {
+  .footer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 36px 28px; }
+  .footer-invite { margin-bottom: 44px; }
+}
+@media (max-width: 600px) {
+  .site-footer { padding-top: 32px; padding-bottom: 30px; }
+  .footer-invite { flex-direction: column; align-items: flex-start; gap: 24px; }
+  .footer-grid { gap: 30px 20px; }
+  .footer-brand { grid-column: 1 / -1; }
+  .footer-brand > p { max-width: 300px; margin-top: 14px; }
+  .footer-contact { grid-column: 1 / -1; }
+  .footer-bottom { margin-top: 32px; flex-direction: column; }
+}
+
+#sessions, #club, #why-ultimate, #club-photo-booth { scroll-margin-top: 100px; }
+
+
+@media (max-width: 600px) {
+  .footer-invite::before { inset: 0; background-size: cover; background-position: center 48%; -webkit-mask-image: none; mask-image: none; opacity: .72; }
+  .footer-invite::after { background: linear-gradient(90deg, rgba(15,42,30,.94), rgba(15,42,30,.62)); }
+}

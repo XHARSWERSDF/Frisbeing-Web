@@ -15,6 +15,8 @@
   var newGender = "";
   var newPosition = "c";
   var tierFilter = "all";
+  var attendanceCounts = Object.create(null);
+  var filterRequest = 0;
   var displayedTier = Object.create(null);
 
   var isAdmin = function () { return window.FBAuth && FBAuth.isAdmin(); };
@@ -123,21 +125,36 @@
     syncDisplayedTiers();
     var rank = { A: 0, I: 1, B: 2, U: 3 };
     return roster.filter(function (member) {
-      return tierFilter === "all" || tierFilter === "tier" || displayedTier[memberKey(member)] === tierFilter;
+      return tierFilter === "all" || tierFilter === "tier" || (tierFilter === "attendance" && isAdmin()) || displayedTier[memberKey(member)] === tierFilter;
     }).sort(function (a, b) {
+      var attendanceOrder = tierFilter === "attendance" && isAdmin()
+        ? (attendanceCounts[memberKey(b)] || 0) - (attendanceCounts[memberKey(a)] || 0) : 0;
       var tierOrder = tierFilter === "tier"
         ? (rank[displayedTier[memberKey(a)]] ?? 4) - (rank[displayedTier[memberKey(b)]] ?? 4)
         : 0;
-      return tierOrder || a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+      return attendanceOrder || tierOrder || a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
     });
   }
 
   var filterEl = el("rosterFilters");
   filterEl.addEventListener("click", function (event) {
     var button = event.target.closest("button[data-tier-filter]");
-    if (!button) return;
-    tierFilter = button.getAttribute("data-tier-filter");
-    paint();
+    if (!button || !isAdmin()) return;
+    var requestId = ++filterRequest;
+    var selected = button.getAttribute("data-tier-filter");
+    if (selected !== "attendance") { tierFilter = selected; paint(); return; }
+    button.disabled = true;
+    FBStore._request("/roster-attendance").then(function (data) {
+      if (requestId !== filterRequest || !isAdmin()) return;
+      attendanceCounts = Object.create(null);
+      (data.members || []).forEach(function (member) {
+        attendanceCounts[memberKey(member)] = Math.max(0, Number(member.attendanceCount) || 0);
+      });
+      tierFilter = "attendance";
+      paint();
+    }).catch(function (error) {
+      if (requestId === filterRequest) say(rosReport, [{ kind: "bad", html: esc(error.message || "Could not load attendance.") }]);
+    }).finally(function () { button.disabled = false; });
   });
   el("refreshMemberOrder").addEventListener("click", function () {
     refreshDisplayedTiers();
@@ -162,6 +179,7 @@
   /* ------------------------------------------------------------- paint -- */
 
   function paint() {
+    if (!isAdmin()) { tierFilter = "all"; attendanceCounts = Object.create(null); }
     var n = roster.length;
 
     /* A leader can edit all day and wonder why nobody else sees it. Say so. */
@@ -232,6 +250,13 @@
       var nm = document.createElement("span");
       nm.className = "nm";
       nm.textContent = m.name;
+      if (isAdmin() && tierFilter === "attendance") {
+        var count = attendanceCounts[memberKey(m)] || 0;
+        var attendance = document.createElement("small");
+        attendance.style.cssText = "display:block;color:var(--mist);font-size:12px;font-weight:400";
+        attendance.textContent = count + (count === 1 ? " session attended" : " sessions attended");
+        nm.appendChild(attendance);
+      }
       row.appendChild(nm);
       if (isAdmin()) {
         var position = document.createElement("div");

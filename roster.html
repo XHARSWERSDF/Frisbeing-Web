@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap">
 <link rel="stylesheet" href="assets/brand.css?v=196">
-<link rel="stylesheet" href="assets/community.css?v=8">
+<link rel="stylesheet" href="assets/community.css?v=10">
 </head>
 <body>
 
@@ -38,13 +38,14 @@
       <div class="head membership-heading">
         <h2 class="display" id="squadHeading">Nobody yet</h2>
       </div>
-      <div class="roster-filters admin-only" id="rosterFilters" role="group" aria-label="Filter members by tier">
+      <div class="roster-filters admin-only" id="rosterFilters" role="group" aria-label="Filter and sort members">
         <button type="button" data-tier-filter="all" aria-pressed="true">All</button>
         <button type="button" data-tier-filter="tier">By tier</button>
         <button type="button" data-tier-filter="A">T1</button>
         <button type="button" data-tier-filter="I">T2</button>
         <button type="button" data-tier-filter="B">T3</button>
         <button type="button" data-tier-filter="U">T4</button>
+        <button type="button" data-tier-filter="attendance">By attendance</button>
         <button type="button" id="refreshMemberOrder">Refresh list</button>
       </div>
       <div class="member-list" id="memberList"></div>
@@ -101,16 +102,17 @@
 </div>
 
 <script src="assets/server-config.js"></script>
-<script src="assets/engine.js?v=80"></script>
+<script src="assets/engine.js?v=82"></script>
 <script src="assets/store.js?v=91"></script>
 <script src="assets/auth-config.js"></script>
 <script src="assets/auth.js?v=3"></script>
 <script src="assets/teammate-rules.js?v=1"></script>
-<script src="assets/preview-mode.js?v=31"></script>
-<script src="assets/navigation.js?v=17"></script>
+<script src="assets/attendance-awards.js?v=1"></script>
+<script src="assets/preview-mode.js?v=34"></script>
+<script src="assets/navigation.js?v=20"></script>
 <script src="assets/motion.js?v=104"></script>
 <script src="assets/pwa.js?v=2"></script>
-<script src="assets/roster.js?v=89"></script>
+<script src="assets/roster.js?v=90"></script>
 <script src="assets/accounts.js?v=3"></script>
 </body>
 </html>

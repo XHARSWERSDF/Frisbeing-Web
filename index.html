@@ -13,7 +13,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap">
 <link rel="stylesheet" href="assets/brand.css?v=196">
-<link rel="stylesheet" href="assets/community.css?v=8">
+<link rel="stylesheet" href="assets/community.css?v=10">
+<link rel="stylesheet" href="assets/home-footer.css?v=3">
 </head>
 <body>
 
@@ -78,7 +79,7 @@
   </section>
 
   <!-- ================================================== about the club -->
-  <section class="band-pitch about-section">
+  <section class="band-pitch about-section" id="club">
     <div class="inner rv about-club">
       <div class="head">
         <h2 class="display">The club</h2>
@@ -93,7 +94,7 @@
   </section>
 
   <!-- ================================================== the impact -->
-  <section class="band-pitch why-section">
+  <section class="band-pitch why-section" id="why-ultimate">
     <div class="inner rv">
       <div class="head">
         <h2 class="display">Why ultimate</h2>
@@ -121,27 +122,66 @@
 
 </div>
 
+<footer class="site-footer" id="site-footer">
+  <div class="footer-inner">
+    <div class="footer-invite">
+      <div>
+        <p class="footer-invite-copy">Everyone has a place on the field</p>
+        <h2>Your next game starts here.</h2>
+        <p class="footer-invite-copy">Good people. Fair teams. Spirit of the game.</p>
+      </div>
+      <a class="btn solid footer-join" id="footerJoin" href="admin.html"><span>JOIN</span></a>
+    </div>
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <a class="footer-brand-link" href="index.html" aria-label="Frisbeing UF home"><img src="assets/monogram.png" alt="" loading="lazy" width="30" height="46"><span>FRISBEING UF</span></a>
+        <p>Tsinglan School’s ultimate frisbee club. Built on teamwork, sportsmanship, and a shared love of the game.</p>
+      </div>
+      <nav aria-label="Footer pages">
+        <h3>Explore</h3>
+        <div class="footer-links"><a href="index.html">Home</a><a href="index.html#club-photo-booth">Photo Booth</a><a href="sort.html">Game</a><a href="roster.html">Members</a><a href="gearhub.html">GearHub</a><a href="admin.html">Your account</a></div>
+      </nav>
+      <nav aria-label="Club information">
+        <h3>The club</h3>
+        <div class="footer-links"><a href="index.html#sessions">Session times</a><a href="index.html#club">About us</a><a href="index.html#why-ultimate">Why ultimate</a></div>
+      </nav>
+      <div class="footer-contact">
+        <h3>Get in touch</h3>
+        <p>Questions? Talk to the club leaders.</p>
+        <a href="mailto:Harry.xu_27@tsinglan.org">Harry.xu_27@tsinglan.org</a>
+        <p class="footer-leaders">Harry Xu<br>Michael Cheng<br>Justin He<br>Advisor: Mr. Klopper</p>
+        <p>Tsinglan School<br>Est. 2022</p>
+      </div>
+    </div>
+    <div class="footer-bottom"><p>Built for Tsinglan with <span class="footer-heart" aria-label="love">&hearts;</span></p><p>&copy; 2026 Frisbeing UF. All rights reserved.</p></div>
+  </div>
+</footer>
+
 <script src="assets/server-config.js"></script>
 <script src="assets/auth-config.js"></script>
 <script src="assets/auth.js?v=3"></script>
 <script src="assets/teammate-rules.js?v=1"></script>
-<script src="assets/preview-mode.js?v=31"></script>
-<script src="assets/navigation.js?v=17"></script>
+<script src="assets/attendance-awards.js?v=1"></script>
+<script src="assets/preview-mode.js?v=34"></script>
+<script src="assets/navigation.js?v=20"></script>
 <script>
   (function () {
-    var join = document.getElementById("heroJoin");
-    if (!join) return;
+    var joins = [document.getElementById("heroJoin"), document.getElementById("footerJoin")].filter(Boolean);
     function syncJoinDestination() {
-      join.href = window.FBAuth && FBAuth.user() ? "sort.html" : "admin.html";
+      joins.forEach(function (join) {
+        join.href = window.FBAuth && FBAuth.user() ? "sort.html" : "admin.html";
+      });
     }
     syncJoinDestination();
     if (window.FBAuth) FBAuth.onChange(syncJoinDestination);
+    joins.forEach(function (join) {
     join.addEventListener("click", function (event) {
       var destination = window.FBAuth && FBAuth.user() ? "sort.html" : "admin.html";
       if (join.getAttribute("href") !== destination) {
         event.preventDefault();
         window.location.href = destination;
       }
+    });
     });
   })();
 </script>

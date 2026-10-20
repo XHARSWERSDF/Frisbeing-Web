@@ -145,7 +145,7 @@ function previewFixture(seed, withEngine = true) {
     document: { getElementById: () => null, createElement: node, body: { appendChild() {}, classList: { add() {} } } }
   });
   context.window = context;
-  for (const file of ['assets/teammate-rules.js', 'assets/preview-mode.js']) vm.runInContext(fs.readFileSync(file, 'utf8'), context);
+  for (const file of ['assets/teammate-rules.js', 'assets/attendance-awards.js', 'assets/preview-mode.js']) vm.runInContext(fs.readFileSync(file, 'utf8'), context);
   const roles = ['player', 'admin', 'leader'];
   return async (i, method, route, body) => { storage.set('frisbeing.ui-preview.role', roles[i]); return context.FBPreview.request(method, route, body); };
 }
@@ -182,7 +182,7 @@ test('server draw attaches only attending teammates and persists their Fris Inde
   assert.equal(FB.drawError(result.teams), null);
   assert.equal(result.teams.flat().length, 5);
   assert.ok(result.teams.some(team => [1, 2].every(i => team.some(p => p.id === f.users[i].id))));
-  assert.deepEqual(result.teams.map(FB.score).sort((a, b) => a - b), [7, 9]);
+  assert.deepEqual(result.teams.map(FB.score).sort((a, b) => a - b), [7.5, 9.3]);
   assert.equal(f.saved().games[today].draw.teams.flat().filter(p => p.teammateGroupId).length, 2);
   const source = result.teams.findIndex(team => team.some(p => p.id === f.users[1].id));
   const moved = await f.api(0, 'PUT', `/game/${today}/assignment`, { id: f.users[1].id, team: 1 - source });
@@ -200,7 +200,7 @@ test('preview draw uses registered teammates and allows unrestricted private dra
     games: { [today]: { joined: people.filter((_, i) => i !== 3), passed: [people[3]], draw: null } } };
   const api = previewFixture(seed);
   const result = await api(1, 'POST', `/game/${today}/draw`, { n: 2 });
-  assert.deepEqual(Array.from(result.teams.map(FB.score)).sort((a, b) => a - b), [7, 9]);
+  assert.deepEqual(Array.from(result.teams.map(FB.score)).sort((a, b) => a - b), [7.5, 9.3]);
   const source = result.teams.findIndex(team => team.some(p => p.id === 'p1'));
   const moved = await api(1, 'PUT', `/game/${today}/assignment`, { id: 'p1', team: 1 - source });
   assert.equal(moved.drawn, false);

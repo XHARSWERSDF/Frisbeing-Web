@@ -26,8 +26,48 @@
   var teammateGroupState = null;
   var respondingInvitation = false;
   var preferredActionTimer = null;
+  // Only a deliberate My Profile visit opens the awards pending at entry.
+  var pendingAwards = [];
+  try {
+    if (sessionStorage.getItem("frisbeing.open-awards") === "1") pendingAwards = null;
+    sessionStorage.removeItem("frisbeing.open-awards");
+    sessionStorage.removeItem("frisbeing.wait-for-passion-profile-open");
+  } catch (ignore) {}
+  window.addEventListener("frisbeing-preview-award", function () {
+    pendingAwards = [];
+    loadTeammateProfile();
+  });
   var passionStarState = null;
   var passionStarOpening = false;
+
+  var passionSupermanState = null;
+  var supermanOpening = false;
+  var supermanDialog = el("passionStarDialog").cloneNode(true);
+  supermanDialog.id = "passionSupermanDialog";
+  supermanDialog.setAttribute("aria-labelledby", "passionSupermanDialogTitle");
+  supermanDialog.querySelector(".passion-star-close").id = "passionSupermanClose";
+  supermanDialog.querySelector("h2").id = "passionSupermanDialogTitle";
+  supermanDialog.querySelector("h2").textContent = "Fris之星";
+  supermanDialog.querySelector(".passion-star-kicker").textContent = "FRISBEING UF · MEMBER HONOUR";
+  supermanDialog.querySelector(".passion-star-copy").textContent = "你是出勤榜前三！！";
+  supermanDialog.querySelector(".passion-star-emblem").innerHTML = '<svg viewBox="0 0 120 120" role="presentation"><path d="M20 35 38 49 60 16 82 49 100 35 90 87 30 87Z"/><circle cx="60" cy="60" r="47"/></svg>';
+  document.body.appendChild(supermanDialog);
+  supermanDialog.querySelector(".passion-star-close").addEventListener("click", function () { supermanDialog.close(); });
+  supermanDialog.addEventListener("click", function (event) { if (event.target === supermanDialog) supermanDialog.close(); });
+  function autoShowSuperman() {
+    if (!pendingAwards || pendingAwards.indexOf("superman") < 0) return;
+    if (!passionSupermanState || !passionSupermanState.unseen || supermanOpening || (passionStarState && passionStarState.unseen) || document.querySelector("dialog[open]")) return;
+    supermanOpening = true;
+    preferredRequest("POST", "/me/passion-superman/seen", {}).then(function (result) {
+      if (!passionSupermanState || !passionSupermanState.unlocked) return;
+      pendingAwards = pendingAwards.filter(function (award) { return award !== "superman"; });
+      passionSupermanState.unseen = false;
+      if (window.FBNav && FBNav.updateSupermanStatus) FBNav.updateSupermanStatus(false);
+      if (!result.alreadySeen) supermanDialog.showModal();
+    }).catch(function (error) { showPreferredActionStatus(error.message || "Could not open your award."); })
+      .finally(function () { supermanOpening = false; });
+  }
+  el("passionStarDialog").addEventListener("close", autoShowSuperman);
 
   function preferredRequest(method, path, body) {
     if (window.FBPreview && FBPreview.active()) return FBPreview.request(method, path, body);
@@ -64,7 +104,7 @@
 
   function loadTeammateProfile() {
     var request = ++profileRequest;
-    if (!currentUser()) { el("teammateArea").hidden = true; return; }
+    if (!currentUser()) { el("teammateArea").hidden = true; passionSupermanState = null; el("passionSupermanTitle").hidden = true; if (supermanDialog.open) supermanDialog.close(); return; }
     el("teammateArea").hidden = false;
     el("teammateStatus").textContent = "Loading teammate info…";
     return preferredRequest("GET", "/me").then(function (data) {
@@ -79,11 +119,13 @@
   }
 
   function autoShowPassionStar() {
+    if (!pendingAwards || pendingAwards.indexOf("star") < 0) return;
     if (!passionStarState || !passionStarState.unseen || passionStarOpening) return;
     try { if (sessionStorage.getItem("frisbeing.wait-for-passion-profile-open") === "1") return; }
     catch (ignore) { /* unavailable session storage should not block the award */ }
     passionStarOpening = true;
     preferredRequest("POST", "/me/passion-star/seen", {}).then(function (result) {
+      pendingAwards = pendingAwards.filter(function (award) { return award !== "star"; });
       passionStarState.unseen = false;
       if (window.FBNav && FBNav.updatePassionStarStatus) FBNav.updatePassionStarStatus(false);
       if (!result.alreadySeen) el("passionStarDialog").showModal();
@@ -99,7 +141,18 @@
     var group = data.teammateGroup;
     var invitations = data.teammateInvitations || [];
     var sent = data.teammateInvitationsSent || [];
+    if (data.passionSuperman) {
+      passionSupermanState = data.passionSuperman;
+      el("passionSupermanTitle").hidden = !passionSupermanState.unlocked;
+      if (!passionSupermanState.unlocked && supermanDialog.open) supermanDialog.close();
+      if (window.FBNav && FBNav.updateSupermanStatus) FBNav.updateSupermanStatus(passionSupermanState.unseen);
+    }
     passionStarState = data.passionStar || { unlocked: false, unseen: false };
+    if (pendingAwards === null) {
+      pendingAwards = [];
+      if (passionStarState.unseen) pendingAwards.push("star");
+      if (passionSupermanState && passionSupermanState.unseen) pendingAwards.push("superman");
+    }
     if (data.account && typeof data.account.attendanceCount === "number") {
       el("attendanceCount").textContent = String(data.account.attendanceCount);
     }
@@ -118,6 +171,7 @@
     el("preferredOpen").disabled = !!group && (!group.isLeader || group.members.length >= 3);
     el("teammateStatus").textContent = "";
     autoShowPassionStar();
+    autoShowSuperman();
 
     if (group) {
       memberList.setAttribute("aria-label", "Teammate group members");

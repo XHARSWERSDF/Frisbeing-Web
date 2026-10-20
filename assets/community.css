@@ -32,3 +32,7 @@
 .fris-off-school-body .nav .mark { margin-right: auto; }
 @media(max-width:720px) { .nav { flex-wrap: wrap; } .booth-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; } .booth-grid img { height: 180px; } }
 @media(max-width:420px) { .booth-grid { grid-template-columns: 1fr; } }
+
+.dev-superman-controls { position: fixed; right: 14px; bottom: 104px; z-index: 1201; display: flex; flex-direction: column; gap: 8px; max-width: calc(100vw - 28px); }
+
+#passionSupermanTitle { color: #ff4545; }

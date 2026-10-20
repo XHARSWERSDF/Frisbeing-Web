@@ -238,15 +238,15 @@ called off.
 
 A draw is always **Fair teams** over everyone who answered `in`, using the
 shared `assets/engine.js` in the server and local preview. T1/T2/T3/T4 have
-base values 4/3/2/1. Members without a linked roster entry use T4. Registered
+base values 4/3.3/2/1.5. Members without a linked roster entry use T4. Registered
 teammates who attend are indivisible units; absent teammates contribute
 neither headcount nor points.
 
 Each registered group receives at most one bonus, taking the highest
-eligible value among its attending members: two or three T1s add 3, two or
-three T2s add 2, two or three T3s add 1, and T4s add 0. Having both T1 and T2
+eligible value among its attending members: two or three T1s add 2, two or
+three T2s add 1; T3 and T4 pairs add 0. Having both T1 and T2
 also qualifies for 2; other mixed-tier pairs do not. Bonuses never stack.
-Thus T1+T1+T2 scores 14, and a T2 pair plus solo T1/T3/T3 scores 16.
+Thus T1+T1+T2 scores 13.3, and a T2 pair plus solo T1/T3/T3 scores 15.6.
 
 The sum is the field team's **Fris Index**. Any two field teams must differ
 by at most 1 in total headcount and at most 2 in Fris Index. Per-tier

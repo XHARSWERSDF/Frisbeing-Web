@@ -3,22 +3,22 @@ const assert = require('node:assert/strict');
 const FB = require('../assets/engine.js');
 const player = (id, tier, group = null, gender = '') => ({ id, name: id, tier, teammateGroupId: group, gender, position: 'c' });
 
-test('Fris Index uses 4/3/2/1 base points and only the highest eligible bonus per attending group', () => {
-  assert.equal(FB.score(FB.TIERS.map((t, i) => player(String(i), t))), 10);
-  for (const [tier, expected] of [['A', 3], ['I', 2], ['B', 1], ['U', 0]]) {
+test('Fris Index uses 4/3.3/2/1.5 base points and only the highest eligible bonus per attending group', () => {
+  assert.equal(FB.score(FB.TIERS.map((t, i) => player(String(i), t))), 10.8);
+  for (const [tier, expected] of [['A', 2], ['I', 1], ['B', 0], ['U', 0]]) {
     for (const count of [2, 3]) {
       const group = Array.from({ length: count }, (_, i) => player(String(i), tier, 'g'));
-      assert.equal(FB.score(group), count * FB.WEIGHT[tier] + expected);
+      assert.equal(FB.score(group), Math.round((count * FB.WEIGHT[tier] + expected) * 10) / 10);
     }
   }
   for (const [tiers, bonus] of [[['A', 'I'], 2], [['A', 'B'], 0], [['I', 'B'], 0], [['A', 'U'], 0],
-    [['A', 'A', 'I'], 3], [['A', 'I', 'I'], 2], [['A', 'I', 'B'], 2], [['B', 'B', 'A'], 1]]) {
+    [['A', 'A', 'I'], 2], [['A', 'I', 'I'], 2], [['A', 'I', 'B'], 2], [['B', 'B', 'A'], 0]]) {
     const group = tiers.map((tier, i) => player(String(i), tier, 'g'));
-    assert.equal(FB.score(group), tiers.reduce((sum, tier) => sum + FB.WEIGHT[tier], 0) + bonus, tiers.join('/'));
+    assert.equal(FB.score(group), Math.round((tiers.reduce((sum, tier) => sum + FB.WEIGHT[tier], 0) + bonus) * 10) / 10, tiers.join('/'));
   }
   assert.equal(FB.score([player('a', 'A', 'g')]), 4, 'an absent teammate adds nothing');
   assert.equal(FB.score([player('a', 'A', 'g1'), player('b', 'A', 'g2')]), 8, 'same field team is not the same registered team');
-  assert.equal(FB.score([player('a', 'I', 'g'), player('b', 'I', 'g'), player('c', 'A'), player('d', 'B'), player('e', 'B')]), 16);
+  assert.equal(FB.score([player('a', 'I', 'g'), player('b', 'I', 'g'), player('c', 'A'), player('d', 'B'), player('e', 'B')]), 15.6);
 });
 
 test('only attending buddies stay together; successful draws respect size and index for every pair of teams', () => {
@@ -32,7 +32,7 @@ test('only attending buddies stay together; successful draws respect size and in
   assert.ok(result.balance.sizeGap <= 1);
   assert.equal(JSON.stringify(people), before);
   // A third registered teammate who did not sign up is not in the input or score.
-  assert.equal(FB.score(people.slice(0, 2)), 9);
+  assert.equal(FB.score(people.slice(0, 2)), 9.3);
 });
 
 test('unsatisfiable attendance returns an error without splitting a group or publishing an invalid draw', () => {
@@ -102,7 +102,7 @@ test('attendance changes preserve assignments when possible and request redraw w
 
 
 test('same-tier headcounts can differ when the Fris Index and total sizes are balanced', () => {
-  const people = [player('a', 'B', 'trio'), player('b', 'B', 'trio'), player('c', 'B', 'trio'), player('d', 'A'), player('e', 'I'), player('f', 'U')];
+  const people = [player('a', 'B', 'trio'), player('b', 'B', 'trio'), player('c', 'B', 'trio'), player('d', 'A'), player('e', 'U'), player('f', 'U')];
   const result = FB.sort(people, 'fair', 2);
   assert.equal(result.error, undefined);
   assert.equal(result.balance.frisGap, 1);
@@ -115,7 +115,7 @@ test('four teams balance every pair while keeping four registered pairs together
   for (let i = 0; i < 4; i++) people.push(player('a' + i, 'A', 'g' + i, 'f'), player('b' + i, 'I', 'g' + i, 'm'), player('u' + i, 'U'));
   const result = FB.sort(people, 'fair', 4);
   assert.equal(result.error, undefined);
-  assert.deepEqual(result.balance.frisIndex, [10, 10, 10, 10]);
+  assert.deepEqual(result.balance.frisIndex, [10.8, 10.8, 10.8, 10.8]);
   assert.equal(result.balance.sizeGap, 0);
   assert.equal(result.balance.splitTeammates, false);
 });

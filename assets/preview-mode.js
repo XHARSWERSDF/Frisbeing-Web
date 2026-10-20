@@ -205,7 +205,14 @@
     return Promise.resolve().then(function () {
       var d = getData(), url = new URL(path, "https://preview.invalid"), route = url.pathname, result;
       if (method !== "GET" && role() === "guest") throw new Error("Sign in to use this action.");
-      if (method !== "GET" && (role() === "player" || role() === "guest") && !/\/rsvp$/.test(route) && route !== "/me/gear-bag" && route !== "/me/preferences" && route !== "/me/passion-star/seen" && route.indexOf("/me/teammate-invitations") !== 0 && route.indexOf("/me/teammate-group") !== 0) throw new Error("Switch to Admin or Admin Manager preview to use this control.");
+      if (method !== "GET" && (role() === "player" || role() === "guest") && !/\/rsvp$/.test(route) && route !== "/me/gear-bag" && route !== "/me/preferences" && route !== "/me/passion-star/seen" && route !== "/me/passion-superman/seen" && route.indexOf("/me/teammate-invitations") !== 0 && route.indexOf("/me/teammate-group") !== 0) throw new Error("Switch to Admin or Admin Manager preview to use this control.");
+      if (route === "/roster-attendance" && method === "GET") {
+        if (role() !== "admin" && role() !== "leader") throw new Error("Admin preview required.");
+        return { members: d.roster.map(function (member) {
+          var account = d.accounts.find(function (entry) { return entry.member && previewNorm(entry.member) === previewNorm(member.name); });
+          return { name: member.name, attendanceCount: Math.max(0, Number(account && account.attendanceCount) || 0) };
+        }) };
+      }
       if (route === "/version") return { version: d.version, games: d.version };
       if (route === "/teammate-groups" && method === "GET") {
         if (role() !== "admin" && role() !== "leader") throw new Error("Only Admin and Admin Manager accounts can view teams.");
@@ -296,10 +303,22 @@
           storedAccount.passionStarUnlockedAt = Date.now();
           persist();
         }
+        var superman = FBAttendanceAwards.reconcile(d.roster, d.accounts);
+        if (superman.changed) persist();
         var star = storedAccount && storedAccount.passionStarUnlockedAt;
         return { role: role(), account: Object.assign({}, current, { attendanceCount: Number(storedAccount && storedAccount.attendanceCount) || 0, preferredTeammates: (d.preferredTeammates && d.preferredTeammates[role()]) || [] }),
+          passionSuperman: superman.states[role()],
           passionStar: { unlocked: !!star, unseen: !!star && !storedAccount.passionStarSeenAt, unlockedAt: star || null, seenAt: storedAccount && storedAccount.passionStarSeenAt || null, currentStreak: 0 },
           teammateGroup: teammateGroupView(group, current.email), teammateInvitations: teammateInvitationsFor(current.member), teammateInvitationsSent: teammateInvitationsSentBy(current.email) };
+      }
+      if (route === "/me/passion-superman/seen" && method === "POST") {
+        if (!signedIn()) throw new Error("Sign in to view your award.");
+        var awards = FBAttendanceAwards.reconcile(d.roster, d.accounts);
+        var award = awards.states[role()];
+        if (!award || !award.unlocked) throw new Error("This award belongs to the current attendance top three.");
+        d.accounts.find(function (account) { return account.id === role(); }).passionSupermanSeenAt = Date.now();
+        persist();
+        return {seen:true, alreadySeen:!award.unseen};
       }
       if (route === "/me/passion-star/seen" && method === "POST") {
         if (!signedIn()) throw new Error("Sign in to view your award.");
@@ -541,21 +560,48 @@
     d.version++;
     persist();
   }
+  function simulateSuperman(lose) {
+    if (!signedIn()) { localStorage.setItem(KEY, "1"); localStorage.setItem(ROLE, "player"); }
+    var d = getData(), me = d.accounts.find(function (account) { return account.id === role(); });
+    var highest = Math.max(0,...d.accounts.map(function (account) { return Number(account.attendanceCount) || 0; }));
+    if (!lose) {
+      me.attendanceCount = highest + 10;
+      delete me.passionSupermanSeenAt;
+    } else {
+      for (var i=1; i<=3; i++) {
+        var id = "demo-superman-rival-"+i;
+        var rival = d.accounts.find(function (account) { return account.id === id; });
+        if (!rival) {
+          rival = {id:id, member:"Demo Champion "+i, name:"Demo Champion "+i, role:"player"};
+          d.accounts.push(rival);
+          d.roster.push({name:rival.member,tier:"I",gender:"",position:"c"});
+        }
+        rival.attendanceCount = highest + i;
+      }
+    }
+    FBAttendanceAwards.reconcile(d.roster,d.accounts);
+    d.version++;
+    persist();
+  }
   function hasSessionPair() {
     return enabled() && getData().teammateGroups.some(function (group) { return group.demoSessionPair; });
   }
   window.FBPreview = { active: enabled, signedIn: signedIn, enable: enable, stop: stop, user: user, role: role, request: request,
-    simulateTeammates: simulateTeammates, hasSessionPair: hasSessionPair, simulateSignups: simulateSignups };
-  if (enabled()) {
+    simulateTeammates: simulateTeammates, hasSessionPair: hasSessionPair, simulateSignups: simulateSignups, simulateSuperman: simulateSuperman, activate: activate };
+  function activate() {
+    if (!enabled()) return;
     // UI-only identity. All preview requests use the isolated local adapter.
     if (window.FBAuth) {
       FBAuth.user = user; FBAuth.role = role; FBAuth.token = function () { return null; };
       FBAuth.refreshAccount = function () { return Promise.resolve(null); };
       FBAuth.applyBodyState();
     }
+    var existingRole = document.getElementById("previewRole");
+    if (existingRole) { existingRole.value = role(); return; }
     var badge = document.createElement("div"); badge.className = "preview-badge";
     badge.innerHTML = '<label for="previewRole">Preview</label><select id="previewRole" aria-label="Preview role">' + Object.keys(labels).map(function (r) { return '<option value="' + r + '"' + (r === role() ? ' selected' : '') + '>' + labels[r] + '</option>'; }).join("") + '</select><button type="button">Exit</button>';
     badge.querySelector("select").addEventListener("change", function (e) { localStorage.setItem(ROLE, e.target.value); window.location.reload(); });
     badge.querySelector("button").addEventListener("click", stop); document.body.appendChild(badge); document.body.classList.add("ui-preview");
   }
+  activate();
 })();

@@ -41,6 +41,8 @@
   var accountLabel = null;
   var inviteBadge = null;
   var passionStarBadge = null;
+  var supermanUnseen = false;
+  var starUnseen = false;
   var inviteRequestId = 0;
   var passionRequestId = 0;
   if (accountLink) {
@@ -63,22 +65,41 @@
     accountLink.replaceChildren(accountLabel, inviteBadge, passionStarBadge);
   }
 
+  function refreshSimulatedAward() {
+    try { sessionStorage.removeItem("frisbeing.open-awards"); } catch (ignore) {}
+    FBPreview.activate();
+    window.dispatchEvent(new Event("frisbeing-preview-award"));
+    if (window.FBAuth && FBAuth._fire) FBAuth._fire();
+    if (window.FBNav && FBNav.refresh) FBNav.refresh();
+  }
+
   if (localDevelopment && window.FBPreview && FBPreview.simulateTeammates) {
     var passionSimulator = document.createElement("button");
     passionSimulator.type = "button";
     passionSimulator.className = "dev-passion-star-global";
     passionSimulator.textContent = "Simulate Passion Star";
     passionSimulator.addEventListener("click", function () {
-      var alreadySignedInPreview = FBPreview.active() && FBPreview.signedIn();
-      if (/\/admin\.html$/.test(location.pathname)) {
-        try { sessionStorage.setItem("frisbeing.wait-for-passion-profile-open", "1"); } catch (ignore) { /* optional in private mode */ }
-      }
       FBPreview.simulateTeammates("passion-star");
-      if (window.FBNav && FBNav.updatePassionStarStatus) FBNav.updatePassionStarStatus(true);
-      if (!alreadySignedInPreview && window.FBAuth && FBAuth._fire) FBAuth._fire();
-      if (window.FBNav && FBNav.refresh) FBNav.refresh();
+      refreshSimulatedAward();
     });
     document.body.appendChild(passionSimulator);
+  }
+
+  if (localDevelopment && window.FBPreview && FBPreview.simulateSuperman) {
+    var supermanControls = document.createElement("div");
+    supermanControls.className = "dev-superman-controls";
+    [ ["Simulate Passion Superman", false], ["Simulate losing Top 3", true] ].forEach(function (spec) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "dev-time-toggle";
+      button.textContent = spec[0];
+      button.addEventListener("click", function () {
+        FBPreview.simulateSuperman(spec[1]);
+        refreshSimulatedAward();
+      });
+      supermanControls.appendChild(button);
+    });
+    document.body.appendChild(supermanControls);
   }
 
   function syncUser(user) {
@@ -135,7 +156,11 @@
           catch (ignore) { /* a full or restricted storage does not block the badge */ }
         }
       }
-      if (passionRequestId === starRequestId && passionStarBadge) passionStarBadge.hidden = !(data.passionStar && data.passionStar.unseen);
+      if (passionRequestId === starRequestId && passionStarBadge) {
+        starUnseen = !!(data.passionStar && data.passionStar.unseen);
+        supermanUnseen = !!(data.passionSuperman && data.passionSuperman.unseen);
+        passionStarBadge.hidden = !(starUnseen || supermanUnseen);
+      }
     }).catch(function () {
       /* Keep the last known reminder during a temporary connection failure. */
     });
@@ -159,21 +184,20 @@
 
   function updatePassionStarStatus(unseen) {
     ++passionRequestId;
-    if (passionStarBadge) passionStarBadge.hidden = !unseen;
+    starUnseen = !!unseen;
+    if (passionStarBadge) passionStarBadge.hidden = !(starUnseen || supermanUnseen);
   }
 
   window.FBNav = window.FBNav || {};
   window.FBNav.updateInviteStatus = updateInviteStatus;
   window.FBNav.updatePassionStarStatus = updatePassionStarStatus;
+  window.FBNav.updateSupermanStatus = function (unseen) {
+    supermanUnseen = !!unseen;
+    if (passionStarBadge) passionStarBadge.hidden = !(starUnseen || supermanUnseen);
+  };
   window.FBNav.refresh = function () { syncUser(window.FBAuth && FBAuth.user()); };
   if (accountLink) accountLink.addEventListener("click", function () {
-    if (!/\/admin\.html$/.test(location.pathname)) return;
-    try {
-      if (sessionStorage.getItem("frisbeing.wait-for-passion-profile-open") === "1") {
-        sessionStorage.removeItem("frisbeing.wait-for-passion-profile-open");
-        window.location.reload();
-      }
-    } catch (ignore) { /* normal navigation still works */ }
+    try { sessionStorage.setItem("frisbeing.open-awards", "1"); } catch (ignore) {}
   });
   if (window.FBAuth) FBAuth.onChange(syncUser);
   syncUser(window.FBAuth && FBAuth.user());

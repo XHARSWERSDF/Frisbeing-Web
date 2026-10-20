@@ -11,7 +11,7 @@
   /* Internal tier codes: A=T1, I=T2, B=T3, U=T4. */
   FB.TIERS = ["A", "I", "B", "U"];
   FB.TIER_NAME = { A: "T1", I: "T2", B: "T3", U: "T4" };
-  FB.WEIGHT = { A: 4, I: 3, B: 2, U: 1 };
+  FB.WEIGHT = { A: 4, I: 3.3, B: 2, U: 1.5 };
   FB.POSITION_NAME = { h: "Handle", c: "Cutter" };
   FB.parsePosition = function (raw) {
     var v = norm(raw);
@@ -345,20 +345,20 @@
     var tiers = { A: 0, I: 0, B: 0, U: 0 };
     players.forEach(function (p) { tiers[p.tier in tiers ? p.tier : "U"]++; });
     // One bonus per registered teammate group: the highest eligible bonus.
-    return Math.max(tiers.A >= 2 ? 3 : 0, tiers.I >= 2 ? 2 : 0,
-      tiers.B >= 2 ? 1 : 0, tiers.A >= 1 && tiers.I >= 1 ? 2 : 0);
+    return Math.max(tiers.A >= 2 ? 2 : 0, tiers.I >= 2 ? 1 : 0,
+      tiers.A >= 1 && tiers.I >= 1 ? 2 : 0);
   };
 
   function score(team) {
     var groups = new Map(), total = 0;
     team.forEach(function (p) {
-      total += FB.WEIGHT[p.tier] || 1;
+      total += FB.WEIGHT[p.tier] || FB.WEIGHT.U;
       if (!p.teammateGroupId) return;
       if (!groups.has(p.teammateGroupId)) groups.set(p.teammateGroupId, []);
       groups.get(p.teammateGroupId).push(p);
     });
     groups.forEach(function (members) { total += FB.teammateBonus(members); });
-    return total;
+    return Math.round(total * 10) / 10;
   }
   FB.score = score;
   FB.frisIndex = score;
@@ -384,7 +384,7 @@
     }); });
     return { sizeGap: spread(teams.map(function (team) { return team.length; })),
       tierGaps: FB.TIERS.map(function (tier) { return spread(stats.map(function (c) { return c[tier]; })); }),
-      frisIndex: scores, frisGap: spread(scores), splitTeammates: split };
+      frisIndex: scores, frisGap: Math.round(spread(scores) * 10) / 10, splitTeammates: split };
   };
 
   FB.drawError = function (teams) {
@@ -631,12 +631,13 @@
     var total = players.length, minSize = Math.floor(total / n), maxSize = Math.ceil(total / n);
     var units = shuffle(FB.attendanceUnits(players).map(function (members) {
       var c = counts(members);
-      return { members: members, size: members.length, score: score(members),
+      return { members: members, size: members.length, score: Math.round(score(members) * 10),
         tiers: FB.TIERS.map(function (tier) { return c[tier]; }), genders: [c.f, c.m, c.u], positions: [c.h, c.c] };
     })).sort(function (a, b) { return b.size - a.size || b.score - a.score; });
     if (units.some(function (u) { return u.size > maxSize; })) {
       return { error: "Attending teammates cannot fit together while keeping team sizes within 1. Choose fewer teams or adjust attendance.", code: "DRAW_CONSTRAINTS" };
     }
+    // Search in tenths so fractional tier weights retain exact comparisons.
     var sumScore = units.reduce(function (sum, u) { return sum + u.score; }, 0);
     var minScore, maxScore;
     var totalTiers = FB.TIERS.map(function (tier) { return players.filter(function (p) { return p.tier === tier; }).length; });
@@ -658,7 +659,7 @@
     }
     function spread(values) { return Math.max.apply(null, values) - Math.min.apply(null, values); }
     var startGap = sumScore % n ? 1 : 0;
-    var lastGap = 2;
+    var lastGap = 20;
     for (var gap = startGap; gap <= lastGap && !answer; gap++) {
       exhausted = false;
       var roundNodes = 0;
@@ -677,7 +678,7 @@
         var rest = remaining[at], scoreDeficit = 0;
         for (var i = 0; i < n; i++) {
           var team = teams[i], slots = targets[i] - team.size;
-          if (team.size + rest.size < targets[i] || team.score + rest.score < minScore || team.score + slots > maxScore || team.score + slots * 6 < minScore) return false;
+          if (team.size + rest.size < targets[i] || team.score + rest.score < minScore || team.score + slots * 15 > maxScore || team.score + slots * 60 < minScore) return false;
           scoreDeficit += Math.max(0, minScore - team.score);
         }
         if (scoreDeficit > rest.score) return false;
@@ -731,7 +732,7 @@
           var sa = answer[a].size - u.size + v.size, sb = answer[b].size - v.size + u.size;
           if (sa < minSize || sa > maxSize || sb < minSize || sb > maxSize) continue;
           add(answer[a], u, -1); add(answer[a], v, 1); add(answer[b], v, -1); add(answer[b], u, 1);
-          if (spread(answer.map(function (team) { return team.score; })) <= 2) {
+          if (spread(answer.map(function (team) { return team.score; })) <= 20) {
             var candidate = metric();
             if (candidate[0] <= winningGap && less(candidate, bestMetric)) { bestMetric = candidate; best = [a, x, b, y]; }
           }
