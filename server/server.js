@@ -364,6 +364,23 @@ function runsTheClub(who) {
   return !!who && (who.role === "leader" || who.role === "admin");
 }
 
+/* Bags belong to accounts, never to a browser or a caller-supplied user ID. */
+function gearBagView(user) {
+  const saved = user.gearBag;
+  const items = db.gearProducts.flatMap((product) => {
+    const quantity = saved && saved.products && saved.products[product.id];
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) return [];
+    return [{ productId: product.id, name: product.name, price: product.price, quantity,
+      lineTotal: Math.round(product.price * 100) * quantity / 100 }];
+  });
+  return {
+    products: Object.fromEntries(items.map((item) => [item.productId, item.quantity])),
+    items, itemCount: items.reduce((sum, item) => sum + item.quantity, 0),
+    total: items.reduce((sum, item) => sum + Math.round(item.lineTotal * 100), 0) / 100,
+    updatedAt: saved ? saved.updatedAt : null
+  };
+}
+
 /* ------------------------------------------------------------ rate limit --
    In memory, per ACCOUNT - never per address. The whole school reaches the
    server from one public address, so counting by address would lock every
@@ -850,8 +867,68 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { products: db.gearProducts });
     }
 
+    if (route === "/club-photos" && req.method === "GET") {
+      const who = whoIs(req);
+      return send(res, 200, { photos: (db.clubPhotos || []).map(p => ({ id: p.id, image: p.image, canDelete: !!who && p.owner === who.user.id })) });
+    }
+    if (route === "/club-photos" && req.method === "POST") {
+      const who = whoIs(req);
+      if (!who) return send(res, 401, { error: "Sign in to add photos." });
+      const body = await readBody(req);
+      const image = String(body.image || "");
+      if (image.length > 900000 || !/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(image)) return send(res, 400, { error: "Choose a smaller photo." });
+      if (!db.clubPhotos) db.clubPhotos = [];
+      const photo = { id: crypto.randomBytes(12).toString("hex"), image, owner: who.user.id, createdAt: Date.now() };
+      db.clubPhotos.push(photo);
+      save();
+      return send(res, 201, { id: photo.id });
+    }
+    const clubPhoto = /^\/club-photos\/([a-f0-9]+)$/.exec(route);
+    if (clubPhoto && req.method === "DELETE") {
+      const who = whoIs(req);
+      if (!who) return send(res, 401, { error: "Sign in first." });
+      const photo = (db.clubPhotos || []).find(p => p.id === clubPhoto[1]);
+      if (!photo) return send(res, 404, { error: "Photo not found." });
+      if (photo.owner !== who.user.id) return send(res, 403, { error: "You can only delete your own photos." });
+      db.clubPhotos = db.clubPhotos.filter(p => p.id !== photo.id);
+      save();
+      return send(res, 200, { removed: true });
+    }
+
     if (route === "/fris-off-school" && req.method === "GET") {
       return send(res, 200, { image: db.frisOffSchoolQr || "assets/fris-off-school-qr.png" });
+    }
+
+    if (route === "/me/gear-bag" && ["GET", "PUT"].includes(req.method)) {
+      const who = whoIs(req);
+      if (!who) return send(res, 401, { error: "Sign in to view your bag." });
+      if (req.method === "PUT") {
+        const body = await readBody(req);
+        const products = body && body.products;
+        if (!products || typeof products !== "object" || Array.isArray(products) || Object.keys(products).length > db.gearProducts.length) {
+          return send(res, 400, { error: "Send a valid bag." });
+        }
+        for (const [id, quantity] of Object.entries(products)) {
+          const product = db.gearProducts.find((entry) => entry.id === id);
+          if (!product || !Number.isInteger(quantity) || quantity < 1 || quantity > 99) {
+            return send(res, 400, { error: "Choose available products and quantities from 1 to 99." });
+          }
+          const previous = who.user.gearBag && who.user.gearBag.products && who.user.gearBag.products[id] || 0;
+          if (product.isPreorder && quantity > previous) return send(res, 400, { error: "Coming-soon products cannot be added to a bag." });
+        }
+        who.user.gearBag = { products, updatedAt: Date.now() };
+        save();
+      }
+      return send(res, 200, gearBagView(who.user));
+    }
+
+    if (route === "/gear-bags" && req.method === "GET") {
+      const who = whoIs(req);
+      if (!runsTheClub(who)) return refuse(res, who);
+      const bags = db.users.map((user) => ({ userId: user.id, name: user.member || user.name || user.email,
+        email: user.email, ...gearBagView(user) }));
+      bags.sort((a, b) => b.itemCount - a.itemCount || a.name.localeCompare(b.name));
+      return send(res, 200, { bags });
     }
 
     /* --- sign in with Microsoft ----------------------------------------- */

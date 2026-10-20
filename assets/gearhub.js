@@ -21,6 +21,12 @@
   var productFormSubmit = productForm.querySelector('[type="submit"]');
   var editingProductId = null;
   var removeExistingImage = false;
+  var bag = {};
+  var bagReady = false;
+  var bagSaving = false;
+  var memberBags = [];
+  var memberBagsDialog = document.getElementById("gearhubMemberBagsDialog");
+  var bagStatus = document.getElementById("gearhubBagStatus");
 
   function isManager() {
     if (window.FBPreview && FBPreview.active()) return FBPreview.role() === "admin" || FBPreview.role() === "leader";
@@ -47,7 +53,7 @@
     return "¥" + Number(value || 0).toLocaleString("zh-CN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   }
 
-  function readCart() {
+  function legacyCart() {
     try {
       var cart = JSON.parse(localStorage.getItem(cartKey) || "{}");
       var items = cart.products && typeof cart.products === "object" ? cart.products : {};
@@ -56,8 +62,41 @@
     } catch (error) { return {}; }
   }
 
+  function readCart() { return Object.assign({}, bag); }
+
   function saveCart(cart) {
-    try { localStorage.setItem(cartKey, JSON.stringify({ products: cart })); } catch (error) { /* Keep this page usable if storage is disabled. */ }
+    if (!bagReady || bagSaving) return Promise.resolve(false);
+    bagSaving = true;
+    bagStatus.textContent = "Saving your bag…";
+    updateCart();
+    return apiRequest("PUT", "/me/gear-bag", { products: cart }).then(function (result) {
+      bag = result.products || {};
+      bagStatus.textContent = "";
+      document.getElementById("importGearhubBag").hidden = true;
+      return true;
+    }).catch(function (error) {
+      bagStatus.textContent = "Your change was not saved. " + error.message + " Please try again.";
+      return false;
+    }).finally(function () {
+      bagSaving = false;
+      updateCart();
+    });
+  }
+
+  function loadBag() {
+    bagReady = false;
+    bagStatus.textContent = "Loading your bag…";
+    document.getElementById("retryGearhubBag").hidden = true;
+    updateCart();
+    return apiRequest("GET", "/me/gear-bag").then(function (result) {
+      bag = result.products || {};
+      bagReady = true;
+      bagStatus.textContent = "";
+      document.getElementById("importGearhubBag").hidden = result.updatedAt !== null || !Object.keys(legacyCart()).length;
+    }).catch(function (error) {
+      bagStatus.textContent = "Could not load your bag. " + error.message;
+      document.getElementById("retryGearhubBag").hidden = false;
+    }).finally(updateCart);
   }
 
   function renderCartDialog(cart) {
@@ -87,20 +126,20 @@
         button.textContent = label;
         button.dataset.productId = product.id;
         button.dataset.cartAction = action;
-        button.disabled = !!disabled;
+        button.disabled = !!disabled || !bagReady || bagSaving || (action === "up" && !!product.isPreorder);
         button.setAttribute("aria-label", (action === "remove" ? "Remove " : action === "down" ? "Decrease quantity of " : "Increase quantity of ") + product.name);
         button.addEventListener("click", function () {
           var updated = readCart();
           var current = Math.max(1, Math.floor(Number(updated[product.id]) || 1));
           if (action === "remove") delete updated[product.id];
           else updated[product.id] = action === "down" ? Math.max(1, current - 1) : Math.min(maxQuantity, current + 1);
-          saveCart(updated);
-          updateCart();
-          var buttons = Array.from(document.querySelectorAll("#gearhubCartItems button"));
-          var next = buttons.find(function (item) { return item.dataset.productId === product.id && item.dataset.cartAction === action && !item.disabled; }) ||
-            buttons.find(function (item) { return item.dataset.productId === product.id && !item.disabled; }) ||
-            buttons.find(function (item) { return !item.disabled; }) || document.getElementById("closeGearhubCart");
-          next.focus({ preventScroll: true });
+          saveCart(updated).then(function () {
+            var buttons = Array.from(document.querySelectorAll("#gearhubCartItems button"));
+            var next = buttons.find(function (item) { return item.dataset.productId === product.id && item.dataset.cartAction === action && !item.disabled; }) ||
+              buttons.find(function (item) { return item.dataset.productId === product.id && !item.disabled; }) ||
+              buttons.find(function (item) { return !item.disabled; }) || document.getElementById("closeGearhubCart");
+            if (cartDialog.open) next.focus({ preventScroll: true });
+          });
         });
         return button;
       }
@@ -117,7 +156,7 @@
     if (!count) {
       var empty = document.createElement("p");
       empty.className = "gearhub-cart-empty";
-      empty.textContent = "Your bag is empty.";
+      empty.textContent = bagReady ? "Your bag is empty." : "Your bag is not loaded yet.";
       items.appendChild(empty);
     }
     document.getElementById("gearhubCartTotal").textContent = money(total);
@@ -134,6 +173,9 @@
     });
     document.getElementById("gearhubCart").textContent = "Bag · " + count + (count === 1 ? " item" : " items") + " · " + money(total);
     renderCartDialog(cart);
+    document.getElementById("gearhubCartStatus").textContent = bagStatus.textContent;
+    document.getElementById("gearhubAdd").disabled = !bagReady || bagSaving || !!activeProduct.isPreorder || (Number(cart[activeProduct.id]) || 0) >= maxQuantity;
+    document.getElementById("importGearhubBag").disabled = !bagReady || bagSaving;
   }
 
   function openProduct(product) {
@@ -151,7 +193,7 @@
     document.getElementById("gearhubDetailDescription").textContent = product.description;
     document.getElementById("gearhubDetailPrice").textContent = money(product.price) + " / each";
     document.getElementById("gearhubDetailComingSoon").hidden = !product.isPreorder;
-    document.getElementById("gearhubAdd").disabled = !!product.isPreorder;
+    document.getElementById("gearhubAdd").disabled = !bagReady || bagSaving || !!product.isPreorder || (Number(bag[product.id]) || 0) >= maxQuantity;
     document.getElementById("gearhubAdd").querySelector("span").textContent = product.isPreorder ? "Coming soon" : "Add to bag";
     document.getElementById("toggleGearhubPreorder").querySelector("span").textContent = product.isPreorder ? "Remove pre-order" : "Mark as pre-order";
     document.getElementById("gearhubProductAdminActions").hidden = !isManager();
@@ -285,12 +327,15 @@
     updateQuantity();
   });
   document.getElementById("gearhubAdd").addEventListener("click", function () {
-    if (activeProduct.isPreorder) return;
+    if (activeProduct.isPreorder || !bagReady || bagSaving) return;
     var cart = readCart();
-    cart[activeProduct.id] = (Number(cart[activeProduct.id]) || 0) + quantity;
-    saveCart(cart);
-    updateCart();
-    addedStatus.textContent = quantity + (quantity === 1 ? " item added to your bag." : " items added to your bag.");
+    var previous = Number(cart[activeProduct.id]) || 0;
+    cart[activeProduct.id] = Math.min(maxQuantity, previous + quantity);
+    var added = cart[activeProduct.id] - previous;
+    addedStatus.textContent = "Saving…";
+    saveCart(cart).then(function (saved) {
+      addedStatus.textContent = saved ? added + (added === 1 ? " item added to your bag." : " items added to your bag.") : "Could not save your bag. Please try again.";
+    });
   });
 
   dialog.addEventListener("click", function (event) { if (event.target === dialog) dialog.close(); });
@@ -384,7 +429,7 @@
       products = products.filter(function (product) { return product.id !== activeProduct.id; });
       var cart = readCart();
       delete cart[activeProduct.id];
-      saveCart(cart);
+      if (bagReady) saveCart(cart);
       renderProducts();
       dialog.close();
     }).catch(function (error) {
@@ -404,7 +449,7 @@
       var index = products.findIndex(function (product) { return product.id === result.product.id; });
       if (index >= 0) products[index] = result.product;
       document.getElementById("gearhubDetailComingSoon").hidden = !result.product.isPreorder;
-      document.getElementById("gearhubAdd").disabled = !!result.product.isPreorder;
+      document.getElementById("gearhubAdd").disabled = !bagReady || bagSaving || !!result.product.isPreorder;
       document.getElementById("gearhubAdd").querySelector("span").textContent = result.product.isPreorder ? "Coming soon" : "Add to bag";
       updateQuantity();
       document.getElementById("toggleGearhubPreorder").querySelector("span").textContent = result.product.isPreorder ? "Remove pre-order" : "Mark as pre-order";
@@ -415,5 +460,91 @@
     }).finally(function () { document.getElementById("toggleGearhubPreorder").disabled = false; });
   });
 
-  loadProducts();
+  document.getElementById("retryGearhubBag").addEventListener("click", loadBag);
+  document.getElementById("importGearhubBag").addEventListener("click", function () {
+    var old = legacyCart(), imported = {};
+    products.forEach(function (product) {
+      var count = Math.min(maxQuantity, Math.max(0, Math.floor(Number(old[product.id]) || 0)));
+      if (count && !product.isPreorder) imported[product.id] = count;
+    });
+    saveCart(imported).then(function (saved) {
+      if (saved) try { localStorage.removeItem(cartKey); } catch (ignore) { /* Import was saved. */ }
+    });
+  });
+
+  function renderMemberBags() {
+    var list = document.getElementById("gearhubBagsList");
+    var query = document.getElementById("gearhubBagsSearch").value.trim().toLowerCase();
+    list.replaceChildren();
+    var visible = memberBags.filter(function (entry) { return (entry.name + " " + entry.email).toLowerCase().indexOf(query) >= 0; });
+    visible.forEach(function (entry) {
+      var details = document.createElement("details");
+      details.className = "gearhub-member-bag";
+      var summary = document.createElement("summary");
+      var identity = document.createElement("span");
+      var name = document.createElement("strong");
+      name.textContent = entry.name;
+      var email = document.createElement("small");
+      email.textContent = entry.email;
+      identity.append(name, email);
+      var totals = document.createElement("span");
+      totals.textContent = entry.itemCount + (entry.itemCount === 1 ? " item · " : " items · ") + money(entry.total);
+      summary.append(identity, totals);
+      details.appendChild(summary);
+      entry.items.forEach(function (item) {
+        var row = document.createElement("div");
+        row.className = "gearhub-cart-item";
+        var description = document.createElement("div");
+        var title = document.createElement("strong");
+        title.textContent = item.name;
+        var amount = document.createElement("span");
+        amount.textContent = money(item.price) + " each × " + item.quantity;
+        description.append(title, amount);
+        var total = document.createElement("strong");
+        total.textContent = money(item.lineTotal);
+        row.append(description, total);
+        details.appendChild(row);
+      });
+      var note = document.createElement("p");
+      note.className = "gearhub-cart-empty";
+      note.textContent = !entry.itemCount ? "This member’s bag is empty." : "Last bag change: " + new Date(entry.updatedAt).toLocaleString();
+      details.appendChild(note);
+      list.appendChild(details);
+    });
+    if (!visible.length) {
+      var empty = document.createElement("p");
+      empty.className = "gearhub-cart-empty";
+      empty.textContent = query ? "No members match your search." : "No member accounts yet.";
+      list.appendChild(empty);
+    }
+  }
+
+  function loadMemberBags() {
+    if (!isManager()) return;
+    var status = document.getElementById("gearhubBagsStatus");
+    var refresh = document.getElementById("refreshGearhubBags");
+    status.textContent = "Loading member bags…";
+    refresh.disabled = true;
+    return apiRequest("GET", "/gear-bags").then(function (result) {
+      memberBags = result.bags || [];
+      renderMemberBags();
+      status.textContent = memberBags.length + " member accounts · " + memberBags.filter(function (entry) { return entry.itemCount > 0; }).length + " with items in their bags. Updated just now.";
+    }).catch(function (error) {
+      memberBags = [];
+      document.getElementById("gearhubBagsList").replaceChildren();
+      status.textContent = "Could not load member bags. " + error.message + " Use Refresh to try again.";
+    }).finally(function () { refresh.disabled = false; });
+  }
+  document.getElementById("gearhubMemberBags").hidden = !isManager();
+  document.getElementById("gearhubMemberBags").addEventListener("click", function () {
+    if (!isManager()) return;
+    memberBagsDialog.showModal();
+    loadMemberBags();
+  });
+  document.getElementById("closeGearhubMemberBags").addEventListener("click", function () { memberBagsDialog.close(); });
+  memberBagsDialog.addEventListener("click", function (event) { if (event.target === memberBagsDialog) memberBagsDialog.close(); });
+  document.getElementById("refreshGearhubBags").addEventListener("click", loadMemberBags);
+  document.getElementById("gearhubBagsSearch").addEventListener("input", renderMemberBags);
+
+  loadProducts().then(loadBag);
 })();

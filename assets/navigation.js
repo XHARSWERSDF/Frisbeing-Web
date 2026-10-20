@@ -2,6 +2,36 @@
 (function () {
   "use strict";
 
+  var hasOwnBackground = document.body.classList.contains("fris-off-school-body");
+  var backgroundKey = "frisbeing.background";
+  var themePicker = document.createElement("div");
+  themePicker.className = "background-picker";
+  themePicker.setAttribute("role", "group");
+  themePicker.setAttribute("aria-label", "Background style");
+  themePicker.innerHTML = '<button type="button" data-background="classic">Classic</button><button type="button" data-background="minimalism">Minimalism</button>';
+  var backgroundStyle = "minimalism";
+  try {
+    var savedStyle = localStorage.getItem(backgroundKey);
+    if (savedStyle === "photos") backgroundStyle = "classic";
+    else if (savedStyle === "pattern") backgroundStyle = "minimalism";
+  } catch (ignore) {}
+  function applyBackground() {
+    document.body.classList.toggle("pattern-background", !hasOwnBackground && backgroundStyle === "classic");
+    themePicker.querySelectorAll("button").forEach(function (button) {
+      button.setAttribute("aria-pressed", String(button.dataset.background === backgroundStyle));
+    });
+  }
+  applyBackground();
+  var brandMark = document.querySelector(".nav .mark");
+  if (brandMark && !hasOwnBackground) brandMark.after(themePicker);
+  themePicker.addEventListener("click", function (event) {
+    var button = event.target.closest("button[data-background]");
+    if (!button) return;
+    backgroundStyle = button.dataset.background;
+    applyBackground();
+    try { localStorage.setItem(backgroundKey, backgroundStyle === "classic" ? "photos" : "pattern"); } catch (ignore) {}
+  });
+
   var tools = document.getElementById("memberTools");
   var gameLink = document.getElementById("gameNav");
   var memberLink = document.getElementById("membershipNav");

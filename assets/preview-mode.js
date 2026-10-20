@@ -187,11 +187,25 @@
     getData().teammateInvitations.push(invitation);
     return invitation;
   }
+  function previewBagView(d, id) {
+    var saved = d.gearBags && d.gearBags[id];
+    var items = [];
+    d.gearProducts.forEach(function (product) {
+      var quantity = saved && saved.products[product.id];
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) return;
+      items.push({ productId: product.id, name: product.name, price: product.price, quantity: quantity,
+        lineTotal: Math.round(product.price * 100) * quantity / 100 });
+    });
+    return { products: Object.fromEntries(items.map(function (item) { return [item.productId, item.quantity]; })),
+      items: items, itemCount: items.reduce(function (sum, item) { return sum + item.quantity; }, 0),
+      total: items.reduce(function (sum, item) { return sum + Math.round(item.lineTotal * 100); }, 0) / 100,
+      updatedAt: saved ? saved.updatedAt : null };
+  }
   function request(method, path, body) {
     return Promise.resolve().then(function () {
       var d = getData(), url = new URL(path, "https://preview.invalid"), route = url.pathname, result;
       if (method !== "GET" && role() === "guest") throw new Error("Sign in to use this action.");
-      if (method !== "GET" && (role() === "player" || role() === "guest") && !/\/rsvp$/.test(route) && route !== "/me/preferences" && route !== "/me/passion-star/seen" && route.indexOf("/me/teammate-invitations") !== 0 && route.indexOf("/me/teammate-group") !== 0) throw new Error("Switch to Admin or Admin Manager preview to use this control.");
+      if (method !== "GET" && (role() === "player" || role() === "guest") && !/\/rsvp$/.test(route) && route !== "/me/gear-bag" && route !== "/me/preferences" && route !== "/me/passion-star/seen" && route.indexOf("/me/teammate-invitations") !== 0 && route.indexOf("/me/teammate-group") !== 0) throw new Error("Switch to Admin or Admin Manager preview to use this control.");
       if (route === "/version") return { version: d.version, games: d.version };
       if (route === "/teammate-groups" && method === "GET") {
         if (role() !== "admin" && role() !== "leader") throw new Error("Only Admin and Admin Manager accounts can view teams.");
@@ -211,6 +225,30 @@
         if (!schoolQr || schoolQr.length > 900000 || !/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(schoolQr)) throw new Error("Choose a PNG, JPG or WebP image smaller than 650 KB.");
         d.frisOffSchoolQr = schoolQr; persist();
         return { image: schoolQr };
+      }
+      if (route === "/me/gear-bag" && ["GET", "PUT"].indexOf(method) >= 0) {
+        if (role() === "guest") throw new Error("Sign in to view your bag.");
+        if (!d.gearBags) d.gearBags = {};
+        if (method === "PUT") {
+          var bagProducts = body && body.products;
+          if (!bagProducts || typeof bagProducts !== "object" || Array.isArray(bagProducts)) throw new Error("Send a valid bag.");
+          Object.keys(bagProducts).forEach(function (id) {
+            var product = d.gearProducts.find(function (entry) { return entry.id === id; });
+            var count = bagProducts[id];
+            if (!product || !Number.isInteger(count) || count < 1 || count > 99) throw new Error("Choose available products and quantities from 1 to 99.");
+            var previous = d.gearBags[role()] && d.gearBags[role()].products[id] || 0;
+            if (product.isPreorder && count > previous) throw new Error("Coming-soon products cannot be added to a bag.");
+          });
+          d.gearBags[role()] = { products: Object.assign({}, bagProducts), updatedAt: Date.now() };
+          persist();
+        }
+        return previewBagView(d, role());
+      }
+      if (route === "/gear-bags" && method === "GET") {
+        if (role() !== "admin" && role() !== "leader") throw new Error("Only club admins can view member bags.");
+        var bags = d.accounts.map(function (account) { return Object.assign({ userId: account.id, name: account.member || account.name, email: account.email }, previewBagView(d, account.id)); });
+        bags.sort(function (a, b) { return b.itemCount - a.itemCount || a.name.localeCompare(b.name); });
+        return { bags: bags };
       }
       if (route === "/gear-products" && method === "POST") {
         if (role() !== "admin" && role() !== "leader") throw new Error("Only Admin and Admin Manager accounts can add products.");
@@ -475,11 +513,39 @@
     }
     persist();
   }
+  function simulateSignups() {
+    if (!signedIn()) {
+      localStorage.setItem(KEY, "1");
+      localStorage.setItem(ROLE, "admin");
+    }
+    var d = getData(), date = dateAt(0), g = game(date), count = g.joined.length;
+    d.removed = d.removed.filter(function (day) { return day !== date; });
+    if (!kind(date)) d.added.push(date);
+    function addMember(member, id) {
+      if (g.joined.length >= 24 || g.joined.concat(g.passed).some(function (player) {
+        return previewNorm(player.member || player.name) === previewNorm(member.name) || player.id === id;
+      })) return;
+      g.joined.push(Object.assign({}, member, { id: id, member: member.name }));
+    }
+    d.roster.forEach(function (member, index) { addMember(member, "demo-signup-roster-" + index); });
+    for (var i = 0; g.joined.length < 24; i++) {
+      var name = "Demo Player " + String(i + 1).padStart(2, "0");
+      var member = d.roster.find(function (entry) { return previewNorm(entry.name) === previewNorm(name); });
+      if (!member) {
+        member = { name: name, tier: ["A", "I", "B", "U"][i % 4], gender: i % 2 ? "f" : "m", position: i % 3 ? "c" : "h" };
+        d.roster.push(member);
+      }
+      addMember(member, "demo-signup-" + i);
+    }
+    if (g.joined.length !== count) g.draw = null;
+    d.version++;
+    persist();
+  }
   function hasSessionPair() {
     return enabled() && getData().teammateGroups.some(function (group) { return group.demoSessionPair; });
   }
   window.FBPreview = { active: enabled, signedIn: signedIn, enable: enable, stop: stop, user: user, role: role, request: request,
-    simulateTeammates: simulateTeammates, hasSessionPair: hasSessionPair };
+    simulateTeammates: simulateTeammates, hasSessionPair: hasSessionPair, simulateSignups: simulateSignups };
   if (enabled()) {
     // UI-only identity. All preview requests use the isolated local adapter.
     if (window.FBAuth) {

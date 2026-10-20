@@ -10,7 +10,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap">
-<link rel="stylesheet" href="assets/brand.css?v=191">
+<link rel="stylesheet" href="assets/brand.css?v=196">
+<link rel="stylesheet" href="assets/community.css?v=8">
 </head>
 <body>
 <div class="wrap">
@@ -25,8 +26,14 @@
     <div class="inner gearhub-inner">
       <div class="head gearhub-heading">
         <div><h2 class="display">GearHub</h2><p class="gearhub-lede">Frisbeing gear for the field.</p></div>
-        <button class="gearhub-cart" id="gearhubCart" type="button" aria-haspopup="dialog" aria-controls="gearhubCartDialog">Bag · 0 items · ¥0</button>
+        <div class="gearhub-heading-actions">
+          <button class="gearhub-cart" id="gearhubMemberBags" type="button" aria-haspopup="dialog" aria-controls="gearhubMemberBagsDialog" hidden>Member bags</button>
+          <button class="gearhub-cart" id="gearhubCart" type="button" aria-haspopup="dialog" aria-controls="gearhubCartDialog">Bag · 0 items · ¥0</button>
+        </div>
       </div>
+      <p class="gearhub-bag-status" id="gearhubBagStatus" role="status" aria-live="polite">Loading your bag…</p>
+      <button class="btn" id="retryGearhubBag" type="button" hidden><span>Retry loading bag</span></button>
+      <button class="btn" id="importGearhubBag" type="button" hidden><span>Import my old bag from this browser</span></button>
       <div class="gearhub-grid" id="gearhubProducts"></div>
       <section class="gearhub-manager" id="gearhubManagerArea" hidden>
         <button class="btn gearhub-manager-toggle" id="toggleProductForm" type="button" aria-expanded="false"><span>Add product</span></button>
@@ -76,16 +83,29 @@
     <h2 id="gearhubCartTitle">Your Order</h2>
     <div class="gearhub-cart-items" id="gearhubCartItems"></div>
     <div class="gearhub-cart-total"><span>Total</span><strong id="gearhubCartTotal">¥0</strong></div>
+    <p class="gearhub-bag-status" id="gearhubCartStatus" role="status" aria-live="polite"></p>
+  </div>
+</dialog>
+<dialog class="gearhub-dialog gearhub-cart-dialog gearhub-member-bags-dialog" id="gearhubMemberBagsDialog" aria-labelledby="gearhubMemberBagsTitle">
+  <button class="gearhub-dialog-close" id="closeGearhubMemberBags" type="button" aria-label="Close member bags">&times;</button>
+  <div class="gearhub-cart-content">
+    <h2 id="gearhubMemberBagsTitle">Member bags</h2>
+    <div class="gearhub-bags-tools">
+      <label>Find a member<input id="gearhubBagsSearch" type="search" placeholder="Name or email"></label>
+      <button class="btn" id="refreshGearhubBags" type="button"><span>Refresh</span></button>
+    </div>
+    <p class="gearhub-bag-status" id="gearhubBagsStatus" role="status" aria-live="polite"></p>
+    <div id="gearhubBagsList"></div>
   </div>
 </dialog>
 <script src="assets/server-config.js"></script>
 <script src="assets/auth-config.js"></script>
 <script src="assets/auth.js?v=3"></script>
 <script src="assets/teammate-rules.js?v=1"></script>
-<script src="assets/preview-mode.js?v=29"></script>
-<script src="assets/navigation.js?v=13"></script>
+<script src="assets/preview-mode.js?v=31"></script>
+<script src="assets/navigation.js?v=17"></script>
 <script src="assets/motion.js?v=104"></script>
 <script src="assets/pwa.js?v=2"></script>
-<script src="assets/gearhub.js?v=16"></script>
+<script src="assets/gearhub.js?v=18"></script>
 </body>
 </html>

@@ -120,6 +120,8 @@ img { max-width: 100%; display: block; }
   visibility: hidden; pointer-events: none; contain: layout paint;
 }
 .brand-layout-measure *, .brand-layout-measure *::after {
+  /* Explicit visibility on a child must not expose the measurement copy. */
+  visibility: hidden !important;
   animation: none !important; transition: none !important;
 }
 .page-background-tint {
@@ -762,18 +764,16 @@ textarea::placeholder, input::placeholder { color: #4E6459; }
 #meta:empty { display: none; }
 
 .tiers-toggle {
-  display: inline-flex; align-items: center; gap: 10px; margin-top: 24px;
-  font-family: var(--f-mono); font-size: 10px; letter-spacing: .19em; text-transform: uppercase;
+  display: flex; align-items: center; gap: 10px; margin: 0;
+  font-family: var(--f-mono); font-size: 12px; letter-spacing: .19em; text-transform: uppercase;
   color: var(--dim); cursor: pointer; background: none; border: 0; padding: 7px 4px;
 }
-.tiers-toggle .box { width: 15px; height: 15px; border: 1px solid var(--line); transform: skewX(-11deg); flex: none; }
+.tiers-toggle[hidden] { display: none; }
+.tiers-toggle input { width: 16px; height: 16px; margin: 0; flex: none; accent-color: var(--silver); cursor: pointer; }
 .tiers-toggle:hover { color: var(--silver); }
-.tiers-toggle[aria-pressed="true"] { color: var(--silver); }
-.tiers-toggle[aria-pressed="true"] .box { background: var(--silver); border-color: var(--silver); }
-.tiers-toggle:focus-visible { outline: 2px solid var(--silver); outline-offset: 2px; }
-.tier-index-toggles { display: flex; flex-direction: column; align-items: center; }
-.tier-index-toggles .tiers-toggle { margin-top: 12px; }
-.tier-index-toggles .tiers-toggle + .tiers-toggle { margin-top: 2px; }
+.tiers-toggle:has(input:checked) { color: var(--silver); }
+.tiers-toggle input:focus-visible { outline: 2px solid var(--silver); outline-offset: 3px; }
+.tier-index-toggles { display: flex; flex-direction: column; align-items: stretch; gap: 2px; width: max-content; max-width: 100%; margin: 12px auto 0; }
 
 /* ------------------------------------------------------- roster table -- */
 
@@ -1451,8 +1451,8 @@ body.is-public .head.public-only { display: block; }
 .gearhub-quantity output { min-width: 34px; color: var(--chalk); text-align: center; font-variant-numeric: tabular-nums; }
 .gearhub-add { width: 100%; margin: 14px 0 0; }
 .gearhub-added { min-height: 1.4em; margin: 10px 0 0; color: var(--mist); font-size: 13px; }
-.gearhub-cart-dialog[open] { display: block; }
-.gearhub-cart-content { padding: 36px; }
+.gearhub-cart-dialog[open] { display: block; overflow: hidden; }
+.gearhub-cart-content { box-sizing: border-box; max-height: min(88vh, 700px); padding: 36px; overflow-y: auto; }
 .gearhub-cart-content h2 { margin: 0 0 24px; color: var(--chalk); font: 32px/1.1 var(--f-display); letter-spacing: .02em; text-transform: uppercase; }
 .gearhub-cart-items { border-block: 1px solid var(--line); }
 .gearhub-cart-item { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 0; color: var(--chalk); }
@@ -1467,6 +1467,27 @@ body.is-public .head.public-only { display: block; }
 .gearhub-cart-item > div span, .gearhub-cart-empty { color: var(--mist); font-size: 13px; }
 .gearhub-cart-empty { margin: 0; padding: 18px 0; }
 .gearhub-cart-total { display: flex; justify-content: space-between; padding: 18px 0 0; color: var(--chalk); }
+.gearhub-heading-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.gearhub-bag-status { color: var(--mist); font-size: 13px; line-height: 1.6; margin: 12px 0 20px; }
+.gearhub-bag-status:empty { display: none; }
+.gearhub-member-bags-dialog { width: min(760px, calc(100vw - 32px)); }
+.gearhub-bags-tools { display: flex; align-items: end; gap: 16px; margin-top: 24px; }
+.gearhub-bags-tools label { flex: 1; min-width: 0; color: var(--mist); font-size: 13px; }
+.gearhub-bags-tools input { display: block; width: 100%; margin-top: 7px; padding: 12px; border: 1px solid var(--line); border-radius: 0; background: var(--ink); color: var(--chalk); font: 14px var(--f-body); }
+.gearhub-bags-tools .btn { margin: 0; }
+.gearhub-member-bag { border-top: 1px solid var(--line); padding: 0 4px; }
+.gearhub-member-bag summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 18px 0; cursor: pointer; color: var(--chalk); }
+.gearhub-member-bag summary::before { content: "+"; color: var(--mist); }
+.gearhub-member-bag[open] summary::before { content: "−"; }
+.gearhub-member-bag summary > span:first-of-type { flex: 1; min-width: 0; }
+.gearhub-member-bag summary > span:last-child { flex-shrink: 0; font-size: 13px; }
+.gearhub-member-bag small { display: block; margin-top: 5px; color: var(--mist); font-size: 12px; overflow-wrap: anywhere; }
+.gearhub-member-bag summary:focus-visible, .gearhub-bags-tools input:focus-visible { outline: 2px solid var(--mist); outline-offset: 3px; }
+@media (max-width: 600px) {
+  .gearhub-member-bag summary { flex-wrap: wrap; }
+  .gearhub-member-bag summary > span:last-child { flex-basis: 100%; padding-left: 20px; }
+  .gearhub-bags-tools { flex-wrap: wrap; }
+}
 @media (max-width: 600px) {
   .gearhub-heading { align-items: start; flex-direction: column; margin-bottom: 28px; }
   .gearhub-product-form { grid-template-columns: 1fr; padding: 18px; }
@@ -1801,12 +1822,4 @@ body.is-public .head.public-only { display: block; }
   .fris-off-school-admin { margin-top: 3px; }
   .fris-off-school-replace { min-width: 142px; padding: 6px 12px; font-size: 11px; }
   .fris-off-school-status { margin-top: 2px; font-size: 10px; }
-}
-@media (max-width: 980px) {
-  .fris-off-school-body .nav { gap: 10px; padding-inline: 18px; }
-  .fris-off-school-body .nav .mark-copy {
-    position: absolute; width: 1px; height: 1px;
-    overflow: hidden; clip-path: inset(50%); white-space: nowrap;
-  }
-  .fris-off-school-body .nav a.lnk { font-size: 10px; letter-spacing: .01em; }
 }

@@ -75,11 +75,12 @@
       var button = document.createElement("button");
       button.type = "button";
       button.className = "dev-time-toggle";
+      button.setAttribute("data-time-preview", "");
       button.setAttribute("aria-pressed", "false");
       button.textContent = preview.label;
       button.addEventListener("click", function () {
         preview.set(!preview.get());
-        timePreviews.querySelectorAll("button").forEach(function (item, index) {
+        timePreviews.querySelectorAll("[data-time-preview]").forEach(function (item, index) {
           var active = index === 0 ? simulateBeforeStart : simulateAfterStart;
           item.setAttribute("aria-pressed", String(active));
           item.textContent = active ? (index === 0 ? "Exit before preview" : "Exit after preview") :
@@ -101,6 +102,17 @@
       window.location.reload();
     });
     timePreviews.appendChild(pairPreview);
+    if (window.FBPreview && FBPreview.simulateSignups) {
+      var signupsPreview = document.createElement("button");
+      signupsPreview.type = "button";
+      signupsPreview.className = "dev-time-toggle";
+      signupsPreview.textContent = "Simulate 24 sign-ups";
+      signupsPreview.addEventListener("click", function () {
+        FBPreview.simulateSignups();
+        window.location.reload();
+      });
+      timePreviews.appendChild(signupsPreview);
+    }
     document.body.appendChild(timePreviews);
   }
 
@@ -1104,28 +1116,28 @@
   /* "Show skill levels" - a leader's own choice, remembered on this device. */
   function applyTiers(on) {
     bandEl.classList.toggle("tiers-on", on);
-    toggleEl.setAttribute("aria-pressed", String(on));
+    toggleEl.checked = on;
   }
   function applyIndex(on) {
     bandEl.classList.toggle("indexes-on", on);
-    indexToggleEl.setAttribute("aria-pressed", String(on));
+    indexToggleEl.checked = on;
   }
   function syncTierVisibility() {
     var allowed = isAdmin();
-    toggleEl.hidden = !allowed;
-    indexToggleEl.hidden = !allowed;
+    toggleEl.closest("label").hidden = !allowed;
+    indexToggleEl.closest("label").hidden = !allowed;
     applyTiers(allowed && readPref(TIERS_KEY) === "1");
     applyIndex(allowed && readPref(INDEX_KEY) === "1");
   }
-  toggleEl.addEventListener("click", function () {
+  toggleEl.addEventListener("change", function () {
     if (!isAdmin()) { syncTierVisibility(); return; }
-    var on = toggleEl.getAttribute("aria-pressed") !== "true";
+    var on = toggleEl.checked;
     writePref(TIERS_KEY, on ? "1" : "0");
     applyTiers(on);
   });
-  indexToggleEl.addEventListener("click", function () {
+  indexToggleEl.addEventListener("change", function () {
     if (!isAdmin()) { syncTierVisibility(); return; }
-    var on = indexToggleEl.getAttribute("aria-pressed") !== "true";
+    var on = indexToggleEl.checked;
     writePref(INDEX_KEY, on ? "1" : "0");
     applyIndex(on);
   });
