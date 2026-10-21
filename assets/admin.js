@@ -88,6 +88,48 @@
 
   function preferredStatus(message) { el("preferredStatus").textContent = message || ""; }
 
+  var feedbackRequest = 0;
+  function loadFeedback() {
+    var sequence = ++feedbackRequest;
+    var user = currentUser();
+    var canRead = !!user && (user.role === "admin" || user.role === "leader");
+    el("feedbackInbox").hidden = !canRead;
+    el("feedbackList").replaceChildren();
+    if (!canRead) return;
+    el("feedbackInboxStatus").textContent = "Loading feedback…";
+    return preferredRequest("GET", "/feedback").then(function (data) {
+      if (sequence !== feedbackRequest) return;
+      var entries = data.feedback || [];
+      el("feedbackInboxStatus").textContent = entries.length ? "" : "No feedback yet.";
+      entries.forEach(function (entry) {
+        var card = document.createElement("article");
+        card.className = "feedback-entry";
+        var date = document.createElement("small");
+        date.textContent = new Date(entry.createdAt).toLocaleString();
+        var message = document.createElement("p");
+        message.textContent = entry.message;
+        card.appendChild(date); card.appendChild(message);
+        el("feedbackList").appendChild(card);
+      });
+    }).catch(function (error) {
+      if (sequence === feedbackRequest) el("feedbackInboxStatus").textContent = error.message || "Could not load feedback.";
+    });
+  }
+  el("feedbackRefresh").addEventListener("click", loadFeedback);
+  el("feedbackForm").addEventListener("submit", function (event) {
+    event.preventDefault();
+    var message = el("feedbackMessage").value.trim();
+    if (!message) { el("feedbackStatus").textContent = "Please write your feedback first."; return; }
+    el("feedbackSubmit").disabled = true;
+    el("feedbackStatus").textContent = "Submitting…";
+    preferredRequest("POST", "/feedback", { message: message }).then(function () {
+      el("feedbackMessage").value = "";
+      el("feedbackStatus").textContent = "Feedback submitted. Thank you for helping us improve!";
+      loadFeedback();
+    }).catch(function (error) { el("feedbackStatus").textContent = error.message || "Could not submit feedback. Please try again."; })
+      .finally(function () { el("feedbackSubmit").disabled = false; });
+  });
+
   function showPreferredActionStatus(message) {
     var status = el("preferredActionStatus");
     if (preferredActionTimer) window.clearTimeout(preferredActionTimer);
@@ -166,8 +208,9 @@
     memberList.hidden = !group;
     invitationsBox.hidden = !invitations.length;
     sentBox.hidden = !sent.length;
-    el("inviteNotification").hidden = !invitations.length;
-    if (window.FBNav && FBNav.updateInviteStatus) FBNav.updateInviteStatus(invitations.length > 0);
+    var hasDeclined = sent.some(function (entry) { return entry.kind === "declined"; });
+    el("inviteNotification").hidden = !invitations.length && !hasDeclined;
+    if (window.FBNav && FBNav.updateInviteStatus) FBNav.updateInviteStatus(invitations.length > 0 || hasDeclined);
     el("preferredOpen").disabled = !!group && (!group.isLeader || group.members.length >= 3);
     el("teammateStatus").textContent = "";
     autoShowPassionStar();
@@ -202,10 +245,10 @@
         var text = document.createElement("p");
         var inviteBack = invitation.kind === "invite-back";
         text.textContent = inviteBack
-          ? invitation.inviterName + " wants to team up. Invite them to your team?"
+          ? invitation.inviterName + " requested to join your team. Accept the request?"
           : invitation.inviterName + " invited you to team up.";
         row.appendChild(text);
-        [ ["accept", inviteBack ? "Invite to my team" : "Accept"], ["decline", "Decline"] ].forEach(function (choice) {
+        [ ["accept", inviteBack ? "Yes" : "Accept"], ["decline", inviteBack ? "No" : "Decline"] ].forEach(function (choice) {
           var button = document.createElement("button");
           button.type = "button";
           button.className = "btn" + (choice[0] === "accept" ? " solid" : "");
@@ -223,6 +266,16 @@
       sent.forEach(function (invitation) {
         var item = document.createElement("p");
         item.textContent = invitation.memberName + " · " + (invitation.message || "Waiting for a response.");
+        if (invitation.kind === "declined") {
+          item.className = "teammate-declined-notice";
+          var dismiss = document.createElement("button");
+          dismiss.type = "button"; dismiss.className = "btn teammate-dismiss"; dismiss.textContent = "Dismiss";
+          dismiss.addEventListener("click", function () {
+            preferredRequest("POST", "/me/teammate-invitations/" + encodeURIComponent(invitation.id) + "/dismiss", {}).then(loadTeammateProfile)
+              .catch(function (error) { el("teammateStatus").textContent = error.message; });
+          });
+          item.appendChild(dismiss);
+        }
         sentBox.appendChild(item);
       });
     }
@@ -364,6 +417,13 @@
       ? preferredRequest("POST", "/me/teammate-invitations", { member: preferredSelected[0] })
       : preferredRequest("PUT", "/me/preferences", { preferredTeammates: preferredSelected });
     save.then(function (data) {
+      if (!data.confirmationRequired) return data;
+      var names = data.confirmationRequired;
+      if (!window.confirm(names.join(", ") + " is already in a team. Request to join their team?")) return null;
+      return preferredRequest("PUT", "/me/preferences", { preferredTeammates: preferredSelected, confirmJoinRequests: names });
+    }).then(function (data) {
+      if (!data) { preferredStatus(""); return; }
+      if (data.confirmationRequired) throw new Error("Team membership changed. Please try again.");
       var sentCount = preferredSelected.length;
       preferredDialog.close();
       showPreferredActionStatus(data.notices && data.notices.length ? data.notices.join(" ") :
@@ -376,6 +436,7 @@
 
   function paint() {
     var user = currentUser();
+    loadFeedback();
     var canSignIn = FBAuth.canSignIn && FBAuth.canSignIn();
 
     el("signedIn").hidden = !user;
@@ -437,10 +498,11 @@
     window.location.assign("admin.html");
   });
 
+  window.addEventListener("focus", loadTeammateProfile);
   FBAuth.onChange(paint);
   window.setInterval(function () {
     if (!respondingInvitation && document.visibilityState !== "hidden" && currentUser()) loadTeammateProfile();
-  }, 15000);
+  }, 3000);
 
   /* If we have just come back from Microsoft, finish the sign-in first, then
      draw the page in whatever state that leaves us. */

@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap">
 <link rel="stylesheet" href="assets/brand.css?v=196">
-<link rel="stylesheet" href="assets/community.css?v=10">
+<link rel="stylesheet" href="assets/community.css?v=16">
 </head>
 <body data-background-emblem="false">
 <div class="wrap">
@@ -66,6 +66,20 @@
             <div class="teammate-sent" id="teammateSent" hidden></div>
             <p class="teammate-status" id="teammateStatus" role="status" aria-live="polite"></p>
           </div>
+          <section class="panel feedback-panel" aria-labelledby="feedbackTitle">
+            <h3 id="feedbackTitle">Anonymous feedback</h3>
+            <p class="hint">Help us improve the club. Share any problems, ideas or suggestions — your feedback is anonymous.</p>
+            <form id="feedbackForm">
+              <label class="hint" for="feedbackMessage">Your feedback</label>
+              <textarea id="feedbackMessage" rows="4" maxlength="4000" required placeholder="What could we do better?"></textarea>
+              <div class="row"><p id="feedbackStatus" role="status" aria-live="polite"></p><button class="btn solid" id="feedbackSubmit" type="submit"><span>Submit</span></button></div>
+            </form>
+            <div id="feedbackInbox" hidden>
+              <div class="row"><h3>Member feedback</h3><button class="btn" id="feedbackRefresh" type="button"><span>Refresh</span></button></div>
+              <p id="feedbackInboxStatus" role="status"></p>
+              <div id="feedbackList"></div>
+            </div>
+          </section>
           <div class="panel teammate-demo" id="teammateDemo" hidden>
             <h3>Developer simulations</h3>
             <div class="row">
@@ -118,12 +132,12 @@
 <script src="assets/server-config.js"></script>
 <script src="assets/auth-config.js"></script>
 <script src="assets/auth.js?v=3"></script>
-<script src="assets/teammate-rules.js?v=1"></script>
+<script src="assets/teammate-rules.js?v=2"></script>
 <script src="assets/attendance-awards.js?v=1"></script>
-<script src="assets/preview-mode.js?v=34"></script>
-<script src="assets/navigation.js?v=20"></script>
+<script src="assets/preview-mode.js?v=39"></script>
+<script src="assets/navigation.js?v=23"></script>
 <script src="assets/motion.js?v=104"></script>
 <script src="assets/pwa.js?v=2"></script>
-<script src="assets/admin.js?v=125"></script>
+<script src="assets/admin.js?v=129"></script>
 </body>
 </html>

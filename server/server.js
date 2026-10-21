@@ -142,6 +142,7 @@ function load() {
   if (!db.sessions || typeof db.sessions !== "object") db.sessions = {};
   if (!Array.isArray(db.teammateInvitations)) db.teammateInvitations = [];
   if (!Array.isArray(db.teammateGroups)) db.teammateGroups = [];
+  if (!Array.isArray(db.feedback)) db.feedback = [];
   const now = Date.now();
   for (const [key, s] of Object.entries(db.sessions)) {
     if (!s || s.until < now) delete db.sessions[key];
@@ -224,7 +225,7 @@ function load() {
     }
   }
   if (migratedDraw) db.gamesVersion++;
-  pruneSessions();                                     /* drop history past KEEP_DAYS */
+  // Session history is retained permanently for club admins.
   if (fresh) save();
   loadDirectory();
 }
@@ -520,7 +521,7 @@ function addTeammateInvitation(fromUser, memberName) {
 
 const CLUB_TZ = process.env.CLUB_TZ || "Asia/Shanghai";
 const DEFAULT_WEEKDAYS = [2, 4];               /* 0 = Sunday: Tuesday and Thursday */
-const KEEP_DAYS = 400;                          /* history kept in the data file */
+const KEEP_DAYS = 400;                          /* attendance streak lookback only; history is retained */
 const TEAM_LETTERS = "ABCDEFGHIJKL";
 
 function clubDate(ms) {
@@ -547,10 +548,17 @@ function finalizeAttendanceDue(now = Date.now()) {
   let changed = false;
   for (const [date, game] of Object.entries(db.games)) {
     if (!sessionKind(date) || date > today || (date === today && minutes < 21 * 60)) continue;
-    if (game.attendanceFinalizedAt) continue;
+    if (game.attendanceFinalizedAt) {
+      if (!Array.isArray(game.attendanceSnapshot)) {
+        game.attendanceSnapshot = joinedPlayers(game);
+        changed = true;
+      }
+      continue;
+    }
     const present = Object.entries(game.rsvps || {})
       .filter(([, status]) => status === "in")
       .map(([userId]) => userId);
+    game.attendanceSnapshot = joinedPlayers(game);
     game.attendance = present;
     game.attendanceFinalizedAt = now;
     for (const userId of present) {
@@ -619,12 +627,6 @@ function gameFor(date) {
   return db.games[date];
 }
 
-function pruneSessions() {
-  const cutoff = addDays(clubDate(), -KEEP_DAYS);
-  db.schedule.added = db.schedule.added.filter((d) => d >= cutoff);
-  db.schedule.removed = db.schedule.removed.filter((d) => d >= cutoff);
-  for (const d of Object.keys(db.games)) if (d < cutoff) delete db.games[d];
-}
 
 function currentName(p) {
   const u = db.users.find((x) => x.id === p.id);
@@ -635,6 +637,7 @@ function currentName(p) {
    Tier and gender come from their entry on the squad list; anyone not linked
    to it yet plays as T4. Only attending members contribute teammate bonuses. */
 function joinedPlayers(game) {
+  if (Array.isArray(game.attendanceSnapshot)) return game.attendanceSnapshot.map((player) => ({ ...player }));
   const out = [];
   for (const [userId, answer] of Object.entries(game.rsvps)) {
     if (answer !== "in") continue;
@@ -684,7 +687,7 @@ function gameView(date, who, today = clubDate()) {
     view.mine = idx < 0 ? null : {
       letter: TEAM_LETTERS[idx],
       members: draw.teams[idx].map(currentName),
-      players: draw.teams[idx].map((p) => ({ id: p.id, name: currentName(p), position: FB.position(p) })),
+      players: draw.teams[idx].map((p) => ({ id: p.id, name: currentName(p), position: FB.position(p), lateJoin: !!p.lateJoin })),
       position: FB.position(draw.teams[idx].find((p) => p.id === who.user.id))
     };
   }
@@ -699,7 +702,7 @@ function gameView(date, who, today = clubDate()) {
       const currentGroups = new Map(joinedPlayers(game).map((player) => [player.id, player.teammateGroupId || null]));
       view.redrawReason = draw.redrawReason || null;
       view.teams = draw.teams.map((t) => t.map((p) => ({
-        id: p.id, name: currentName(p), member: p.member, tier: p.tier, gender: p.gender, position: FB.position(p), teammateGroupId: currentGroups.get(p.id) || null
+        id: p.id, name: currentName(p), member: p.member, tier: p.tier, gender: p.gender, position: FB.position(p), teammateGroupId: currentGroups.get(p.id) || null, lateJoin: !!p.lateJoin
       })));
     }
   }
@@ -775,10 +778,10 @@ function pushOne(endpoint) {
 }
 
 function teammateInvitationsSentBy(user) {
-  return db.teammateInvitations.filter((invitation) => invitation.status === "pending" && invitation.fromUserId === user.id)
+  return db.teammateInvitations.filter((invitation) => ["pending", "declined"].includes(invitation.status) && !invitation.dismissed && invitation.fromUserId === user.id)
     .map((invitation) => {
       const recipient = db.users.find((entry) => FB.norm(entry.member) === FB.norm(invitation.toMember));
-      const current = teammateInvitationState(invitation, recipient);
+      const current = invitation.status === "declined" ? { kind: "declined", message: "Your request was declined." } : teammateInvitationState(invitation, recipient);
       return { id: invitation.id, memberName: invitation.toMember, createdAt: invitation.createdAt, kind: current.kind, message: current.message };
     });
 }
@@ -986,6 +989,23 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, {});
     }
 
+    if (route === "/feedback" && req.method === "POST") {
+      const who = whoIs(req);
+      if (!who || !who.user) return send(res, 401, { error: "Sign in to submit feedback." });
+      const body = await readBody(req);
+      const message = typeof (body && body.message) === "string" ? body.message.trim() : "";
+      if (!message || message.length > 4000) return send(res, 400, { error: "Write feedback between 1 and 4,000 characters." });
+      // Never store the submitting account, name, email or session with feedback.
+      db.feedback.push({ id: crypto.randomBytes(8).toString("hex"), message, createdAt: Date.now() });
+      save();
+      return send(res, 201, { ok: true });
+    }
+    if (route === "/feedback" && req.method === "GET") {
+      const who = whoIs(req);
+      if (!runsTheClub(who)) return refuse(res, who);
+      return send(res, 200, { feedback: db.feedback.map(({ id, message, createdAt }) => ({ id, message, createdAt })).reverse() });
+    }
+
     if (route === "/me" && req.method === "GET") {
       finalizeAttendanceDue();
       const who = whoIs(req);
@@ -1068,6 +1088,13 @@ const server = http.createServer(async (req, res) => {
         const current = TeamRules.classify(group, target && teammateGroupFor(target.id));
         if (current.kind === "unavailable") return send(res, 409, { error: name + ": " + current.message });
       }
+      const joinRequests = names.filter((name) => {
+        const target = db.users.find((entry) => entry.member && FB.norm(entry.member) === FB.norm(name));
+        return TeamRules.classify(group, target && teammateGroupFor(target.id)).kind === "invite-back";
+      });
+      if (joinRequests.some((name) => !(body.confirmJoinRequests || []).includes(name))) {
+        return send(res, 200, { confirmationRequired: joinRequests });
+      }
       db.teammateInvitations = db.teammateInvitations.filter((invitation) =>
         invitation.status !== "pending" || invitation.fromUserId !== who.user.id ||
         names.some((name) => FB.norm(name) === FB.norm(invitation.toMember)));
@@ -1121,6 +1148,17 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
+    const dismissInvitation = /^\/me\/teammate-invitations\/([a-f0-9]{16})\/dismiss$/.exec(route);
+    if (dismissInvitation && req.method === "POST") {
+      const who = whoIs(req);
+      if (!who || !who.user) return send(res, 401, { error: "Not signed in." });
+      const invitation = db.teammateInvitations.find((entry) => entry.id === dismissInvitation[1] && entry.fromUserId === who.user.id && entry.status === "declined");
+      if (!invitation) return send(res, 404, { error: "Notice no longer available." });
+      invitation.dismissed = true;
+      save();
+      return send(res, 200, { ok: true });
+    }
+
     const teammateResponse = /^\/me\/teammate-invitations\/([a-f0-9]{16})\/respond$/.exec(route);
     if (teammateResponse && req.method === "POST") {
       const who = whoIs(req);
@@ -1145,10 +1183,9 @@ const server = http.createServer(async (req, res) => {
           return send(res, 409, { error: "Team membership changed. Review the updated invitation and try again." });
         }
         if (current.kind === "invite-back") {
-          // B already has a team: approving A's request sends A an invitation.
-          // It does not move B or add A until A accepts the new invitation.
-          addTeammateInvitation(who.user, inviter.member);
-          invitation.status = "invited-back";
+          const group = teammateGroupFor(who.user.id);
+          group.members.push(inviter.id);
+          invitation.status = "accepted";
         } else {
           let group = teammateGroupFor(inviter.id);
           if (!group) {
@@ -1246,13 +1283,26 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { removed: true, id });
     }
 
+    if (route === "/roster-attendance" && req.method === "PUT") {
+      const who = whoIs(req);
+      if (!runsTheClub(who)) return refuse(res, who);
+      const body = await readBody(req);
+      const member = db.roster.find((entry) => FB.norm(entry.name) === FB.norm(body.name || ""));
+      if (!member || ![1, -1].includes(body.delta)) return send(res, 400, { error: "Choose a member and +1 or -1." });
+      const key = FB.norm(member.name);
+      db.walkInCounts = db.walkInCounts || {};
+      db.walkInCounts[key] = Math.max(0, (Number(db.walkInCounts[key]) || 0) + body.delta);
+      save();
+      return send(res, 200, { name: member.name, walkInCount: db.walkInCounts[key] });
+    }
+
     if (route === "/roster-attendance" && req.method === "GET") {
       const who = whoIs(req);
       if (!runsTheClub(who)) return refuse(res, who);
       finalizeAttendanceDue();
       return send(res, 200, { members: db.roster.map((member) => {
         const account = db.users.find((user) => user.member && FB.norm(user.member) === FB.norm(member.name));
-        return { name: member.name, attendanceCount: Math.max(0, Number(account && account.attendanceCount) || 0) };
+        return { name: member.name, attendanceCount: Math.max(0, Number(account && account.attendanceCount) || 0), walkInCount: Math.max(0, Number((db.walkInCounts || {})[FB.norm(member.name)]) || 0) };
       }) });
     }
 
@@ -1379,7 +1429,7 @@ const server = http.createServer(async (req, res) => {
         const published = !!(g && g.draw && g.draw.published !== false);
         const s = { date, kind, drawn: published };
         if (full && g && g.draw && !published) s.hasDraft = true;
-        if (full) s.joined = g ? Object.values(g.rsvps).filter((a) => a === "in").length : 0;
+        if (full) s.joined = g ? joinedPlayers(g).length : 0;
         sessions.push(s);
       }
       return send(res, 200, {
@@ -1413,7 +1463,6 @@ const server = http.createServer(async (req, res) => {
       } else {
         return send(res, 400, { error: "Say whether to add or remove the session." });
       }
-      pruneSessions();
       db.gamesVersion++;
       save();
       return send(res, 200, { date, kind: sessionKind(date), games: db.gamesVersion });
@@ -1455,14 +1504,9 @@ const server = http.createServer(async (req, res) => {
       game.rsvps[who.user.id] = body.status;
       if (game.draw) {
         const refreshed = FB.refreshDrawAttendance(game.draw.teams, joinedPlayers(game));
-        if (refreshed.reason) {
-          game.draw.needsRedraw = true;
-          game.draw.redrawReason = refreshed.reason;
-        } else {
-          game.draw.teams = refreshed.teams;
-          game.draw.needsRedraw = false;
-          game.draw.redrawReason = null;
-        }
+        game.draw.teams = refreshed.teams;
+        game.draw.needsRedraw = false;
+        game.draw.redrawReason = null;
         game.draw.updatedAt = Date.now();
       }
       db.gamesVersion++;
@@ -1527,7 +1571,7 @@ const server = http.createServer(async (req, res) => {
       const game = db.games[date];
       if (!game || !game.draw) return send(res, 409, { error: "Draw teams before publishing." });
       if (game.draw.published !== false) return send(res, 409, { error: "These teams are already published." });
-      if (game.draw.needsRedraw) return send(res, 409, { error: "Attendance changed. Draw teams again before publishing." });
+
       game.draw.published = true;
       game.draw.publishedAt = Date.now();
       game.draw.updatedAt = game.draw.publishedAt;
@@ -1546,7 +1590,8 @@ const server = http.createServer(async (req, res) => {
       if (!runsTheClub(who)) return send(res, 403, { error: "Only admins can change teams." });
       const date = assignment[1];
       if (!isDateString(date) || !sessionKind(date)) return send(res, 400, { error: "There is no game on that day." });
-      if (date < clubDate()) return send(res, 400, { error: "That game is over." });
+      finalizeAttendanceDue();
+      const historical = date < clubDate() || !!(db.games[date] && db.games[date].attendanceFinalizedAt);
       const body = await readBody(req);
       const game = db.games[date];
       if (!game || !game.draw) return send(res, 409, { error: "Draw the teams first." });
@@ -1571,8 +1616,10 @@ const server = http.createServer(async (req, res) => {
         if (moved.error) return send(res, 409, { error: moved.error });
         if (body.position !== undefined) moved.teams[target].find((p) => p.id === player.id).position = body.position;
         game.draw.teams = moved.teams;
-        game.draw.published = false;
-        delete game.draw.publishedAt;
+        if (!historical) {
+          game.draw.published = false;
+          delete game.draw.publishedAt;
+        }
       }
       if (body.position !== undefined) player.position = body.position;
       game.draw.updatedAt = Date.now();

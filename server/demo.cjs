@@ -41,22 +41,6 @@ module.exports = function createDemo(root) {
     });
     return message + '.' + crypto.sign('RSA-SHA256', Buffer.from(message), privateKey).toString('base64url');
   };
-  const accountPage = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Local test accounts · Frisbeing</title>
-    <style>body{background:#0e2018;color:#f3f5ef;font:16px system-ui;margin:0;padding:32px 20px}main{max-width:760px;margin:auto}h1{font-size:32px}p{line-height:1.6;color:#b9cdc0}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}button,a{font:inherit}button{background:#193a2a;color:#fff;border:1px solid #5a7866;padding:20px;text-align:left;cursor:pointer}button:hover{background:#29553e}b,small{display:block}small{color:#c0d3c5;margin-top:6px}a{color:#dceadf}#error{color:#ffb2a4}button:disabled{opacity:.5}</style>
-    <main><h1>Local test accounts</h1><p>Sample data for today and tomorrow. Choose an account to test. Open this page in another tab to try a second account at the same time.</p>
-    <div class="cards">${accounts.map(a => `<button data-account="${a.id}"><b>${a.name}</b><small>${a.label}</small></button>`).join('')}
-    <button data-account="guest"><b>Guest</b><small>View public participant lists</small></button></div><p id="error" role="alert"></p>
-    <p><a href="/sort.html">Go to sessions</a> · <a href="/roster.html">Go to members</a> · <a href="/__demo" target="_blank" rel="noopener">Open another test tab</a></p>
-    <p>Try Admin → draw today’s teams, then Handle → join late. Tomorrow’s sign-up and list stay separate. The admin can move players and change positions. Restarting the demo gives you fresh sample data.</p></main>
-    <script>document.querySelector('.cards').addEventListener('click',async event=>{
-      const button=event.target.closest('[data-account]');if(!button)return;
-      document.querySelectorAll('button').forEach(b=>b.disabled=true);
-      try{if(button.dataset.account==='guest'){sessionStorage.removeItem('frisbeing.session.v1');}
-      else{const response=await fetch('/__demo/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:button.dataset.account})});
-      const result=await response.json();if(!response.ok)throw Error(result.error||'Could not sign in');
-      sessionStorage.setItem('frisbeing.session.v1',JSON.stringify({...result.account,token:result.token,via:'local-demo',until:Date.now()+86400000}));}
-      location.href='/sort.html';}catch(error){document.getElementById('error').textContent=error.message;document.querySelectorAll('button').forEach(b=>b.disabled=false);}
-    });</script></html>`;
 
   return {
     env: { DATA_FILE: dataFile, ENTRA_TENANT_ID: tenant, ENTRA_CLIENT_ID: client, ENTRA_JWKS_URL: 'http://127.0.0.1:8931/__demo/keys', HOST: '127.0.0.1' },
@@ -64,7 +48,7 @@ module.exports = function createDemo(root) {
       if (!url.pathname.startsWith('/__demo')) return false;
       res.setHeader('Cache-Control', 'no-store');
       if (url.pathname === '/__demo' && req.method === 'GET') {
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(accountPage); return true;
+        res.writeHead(302, { Location: '/admin.html' }); res.end(); return true;
       }
       if (url.pathname === '/__demo/keys' && req.method === 'GET') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -88,8 +72,8 @@ module.exports = function createDemo(root) {
     },
     html(content) {
       return content.toString().replace('assets/auth.js"', 'assets/auth.js?demo=' + kid + '"')
-        .replace('<script src="assets/pwa.js"></script>', '')
-        .replace('</body>', '<aside style="position:fixed;bottom:14px;right:14px;z-index:3000;padding:12px 16px;background:#f0c969;color:#15271d;font:13px system-ui;border-radius:4px">Local test data · <a href="/__demo" style="color:inherit;font-weight:bold">Switch account</a></aside></body>');
+        .replace('<script src="assets/pwa.js"></script>', '');
+
     },
     auth(content) { return content.toString().replace(/window\.localStorage/g, 'window.sessionStorage'); },
     config: 'window.FBAuthConfig={entra:{tenantId:"' + tenant + '",clientId:"' + client + '"},emailDomain:"tsinglan.org",sessionDays:1};'

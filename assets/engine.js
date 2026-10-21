@@ -11,7 +11,7 @@
   /* Internal tier codes: A=T1, I=T2, B=T3, U=T4. */
   FB.TIERS = ["A", "I", "B", "U"];
   FB.TIER_NAME = { A: "T1", I: "T2", B: "T3", U: "T4" };
-  FB.WEIGHT = { A: 4, I: 3.3, B: 2, U: 1.5 };
+  FB.WEIGHT = { A: 4, I: 3, B: 2, U: 1 };
   FB.POSITION_NAME = { h: "Handle", c: "Cutter" };
   FB.parsePosition = function (raw) {
     var v = norm(raw);
@@ -26,7 +26,7 @@
       label: "Fair teams",
       tiers: ["A", "I", "B"],
       anchorA: 0,
-      blurb: "Keep attending teammates together, balance the Fris Index, total size and gender, with an index gap of at most 2."
+      blurb: "Keep attending teammates together, balance the Fris Index, tier counts and total size, with an index gap of at most 2."
     },
     tournament: {
       key: "tournament",
@@ -344,20 +344,15 @@
   FB.teammateBonus = function (players) {
     var tiers = { A: 0, I: 0, B: 0, U: 0 };
     players.forEach(function (p) { tiers[p.tier in tiers ? p.tier : "U"]++; });
-    // One bonus per registered teammate group: the highest eligible bonus.
-    return Math.max(tiers.A >= 2 ? 2 : 0, tiers.I >= 2 ? 1 : 0,
-      tiers.A >= 1 && tiers.I >= 1 ? 2 : 0);
+    return tiers.A >= 2 ? 2 : 0;
   };
 
   function score(team) {
-    var groups = new Map(), total = 0;
+    var total = 0;
     team.forEach(function (p) {
       total += FB.WEIGHT[p.tier] || FB.WEIGHT.U;
-      if (!p.teammateGroupId) return;
-      if (!groups.has(p.teammateGroupId)) groups.set(p.teammateGroupId, []);
-      groups.get(p.teammateGroupId).push(p);
     });
-    groups.forEach(function (members) { total += FB.teammateBonus(members); });
+    total += FB.teammateBonus(team);
     return Math.round(total * 10) / 10;
   }
   FB.score = score;
@@ -410,15 +405,16 @@
     return { teams: candidate, movedIds: moving.map(function (p) { return p.id; }) };
   };
 
-  // Retain existing assignments where the latest attendance still fits.
-  // The caller keeps the old snapshot when a redraw is needed.
+  // Retain existing assignments and automatically place new arrivals.
+  // Late arrivals are highlighted until a fresh draw replaces this snapshot.
   FB.refreshDrawAttendance = function (teams, players) {
     var current = new Map(players.map(function (p) { return [p.id, p]; })), assigned = new Set();
     var candidate = teams.map(function (team) { return team.filter(function (p) { return current.has(p.id); }).map(function (p) {
       assigned.add(p.id);
-      return Object.assign({}, current.get(p.id), { position: FB.position(p) });
+      return Object.assign({}, current.get(p.id), { position: FB.position(p), lateJoin: !!p.lateJoin });
     }); });
     FB.attendanceUnits(players.filter(function (p) { return !assigned.has(p.id); })).forEach(function (unit) {
+      unit = unit.map(function (p) { return Object.assign({}, p, { lateJoin: true }); });
       var existing = unit[0].teammateGroupId && candidate.findIndex(function (team) {
         return team.some(function (p) { return p.teammateGroupId === unit[0].teammateGroupId; });
       });
@@ -426,13 +422,13 @@
       if (target < 0) candidate.forEach(function (team, i) {
         team.push.apply(team, unit);
         var balance = FB.drawBalance(candidate);
-        var cost = Math.max(0, balance.sizeGap - 1) * 10000 + Math.max(0, balance.frisGap - 2) * 100 + balance.frisGap;
+        var cost = balance.sizeGap * balance.sizeGap + balance.frisGap * balance.frisGap / 4 + balance.tierGaps.reduce(function (sum, gap) { return sum + gap * gap; }, 0);
         team.splice(team.length - unit.length, unit.length);
         if (cost < bestCost) { bestCost = cost; target = i; }
       });
       if (target >= 0) candidate[target].push.apply(candidate[target], unit);
     });
-    return { teams: candidate, reason: FB.drawError(candidate) };
+    return { teams: candidate, reason: null };
   };
 
   function counts(team) {
@@ -452,13 +448,12 @@
      candidates before the stable sort makes equally balanced teams random. */
   FB.chooseTeam = function (teams, player) {
     if (!teams.length) return -1;
-    var stats = teams.map(counts), g = genderKey(player) || "u", pos = FB.position(player);
+    var stats = teams.map(counts), pos = FB.position(player);
     return shuffle(teams.map(function (_, i) { return i; })).sort(function (a, b) {
       return teams[a].length - teams[b].length
         || stats[a][player.tier] - stats[b][player.tier]
-        || stats[a][g] - stats[b][g]
-        || stats[a][pos] - stats[b][pos]
-        || score(teams[a]) - score(teams[b]);
+        || score(teams[a]) - score(teams[b])
+        || stats[a][pos] - stats[b][pos];
     })[0];
   };
 
@@ -624,127 +619,94 @@
     return teams;
   };
 
-  /* Assign complete attendance units. Hard constraints are checked during
-     search; no greedy fallback can silently publish an invalid draw. */
+  /* Keep registered teammates together. Balance Index, tier distribution and
+     headcount jointly; positions only break ties. Gender is not an input. */
   FB.fairDraft = function (players, n, options) {
     options = options || {};
     var total = players.length, minSize = Math.floor(total / n), maxSize = Math.ceil(total / n);
     var units = shuffle(FB.attendanceUnits(players).map(function (members) {
       var c = counts(members);
-      return { members: members, size: members.length, score: Math.round(score(members) * 10),
-        tiers: FB.TIERS.map(function (tier) { return c[tier]; }), genders: [c.f, c.m, c.u], positions: [c.h, c.c] };
-    })).sort(function (a, b) { return b.size - a.size || b.score - a.score; });
-    if (units.some(function (u) { return u.size > maxSize; })) {
-      return { error: "Attending teammates cannot fit together while keeping team sizes within 1. Choose fewer teams or adjust attendance.", code: "DRAW_CONSTRAINTS" };
+      return { members: members, size: members.length,
+        base: members.reduce(function (sum, p) { return sum + (FB.WEIGHT[p.tier] || FB.WEIGHT.U); }, 0),
+        tiers: FB.TIERS.map(function (tier) { return c[tier]; }), positions: [c.h, c.c] };
+    })).sort(function (a, b) { return b.size - a.size || b.base - a.base; });
+    if (units.some(function (unit) { return unit.size > maxSize; })) {
+      return { code: "DRAW_CONSTRAINTS", error: "Attending teammates cannot fit together while keeping team sizes within 1. Choose fewer teams or adjust attendance." };
     }
-    // Search in tenths so fractional tier weights retain exact comparisons.
-    var sumScore = units.reduce(function (sum, u) { return sum + u.score; }, 0);
-    var minScore, maxScore;
-    var totalTiers = FB.TIERS.map(function (tier) { return players.filter(function (p) { return p.tier === tier; }).length; });
-    var totalGenders = ["f", "m", ""].map(function (g) { return players.filter(function (p) { return genderKey(p) === g; }).length; });
     var targets = Array.from({ length: n }, function (_, i) { return minSize + (i < total % n ? 1 : 0); });
+    var teams = targets.map(function () { return { units: [], size: 0, base: 0, tiers: [0, 0, 0, 0], positions: [0, 0] }; });
     var remaining = Array(units.length + 1);
-    remaining[units.length] = { size: 0, score: 0 };
-    for (var k = units.length - 1; k >= 0; k--) {
-      var next = remaining[k + 1], unit = units[k];
-      remaining[k] = { size: next.size + unit.size, score: next.score + unit.score };
-    }
-    var nodes = 0, limit = options.maxNodes || 100000, exhausted = false, anyExhausted = false, answer = null, winningGap = null;
-    function blank() { return { units: [], size: 0, score: 0, tiers: [0, 0, 0, 0], genders: [0, 0, 0], positions: [0, 0] }; }
+    remaining[units.length] = [0, 0, 0, 0];
+    for (var i = units.length - 1; i >= 0; i--) remaining[i] = remaining[i + 1].map(function (count, t) { return count + units[i].tiers[t]; });
+    function index(team) { return team.base + (team.tiers[0] >= 2 ? 2 : 0); }
     function add(team, unit, sign) {
-      team.size += sign * unit.size; team.score += sign * unit.score;
-      ["tiers", "genders", "positions"].forEach(function (key) {
-        unit[key].forEach(function (count, i) { team[key][i] += sign * count; });
-      });
+      team.size += sign * unit.size; team.base += sign * unit.base;
+      unit.tiers.forEach(function (count, t) { team.tiers[t] += sign * count; });
+      unit.positions.forEach(function (count, p) { team.positions[p] += sign * count; });
     }
-    function spread(values) { return Math.max.apply(null, values) - Math.min.apply(null, values); }
-    var startGap = sumScore % n ? 1 : 0;
-    var lastGap = 20;
-    for (var gap = startGap; gap <= lastGap && !answer; gap++) {
-      exhausted = false;
-      var roundNodes = 0;
-      minScore = Math.ceil((sumScore - gap * (n - 1)) / n);
-      maxScore = Math.floor((sumScore + gap * (n - 1)) / n);
-      if (units.some(function (unit) { return unit.score > maxScore; })) continue;
-      var teams = targets.map(blank), failed = new Set();
-      function signature(team, i) { return [targets[i], team.size, team.score].join(","); }
-      function search(at) {
-        nodes++;
-        if (++roundNodes > limit) { exhausted = true; anyExhausted = true; return false; }
-        if (at === units.length) {
-          if (teams.some(function (team, i) { return team.size !== targets[i]; }) || spread(teams.map(function (team) { return team.score; })) > gap) return false;
-          answer = teams; winningGap = gap; return true;
-        }
-        var rest = remaining[at], scoreDeficit = 0;
-        for (var i = 0; i < n; i++) {
-          var team = teams[i], slots = targets[i] - team.size;
-          if (team.size + rest.size < targets[i] || team.score + rest.score < minScore || team.score + slots * 15 > maxScore || team.score + slots * 60 < minScore) return false;
-          scoreDeficit += Math.max(0, minScore - team.score);
-        }
-        if (scoreDeficit > rest.score) return false;
-        var key = at + ":" + teams.map(signature).sort().join(";");
-        if (failed.has(key)) return false;
-        var unit = units[at], seen = new Set();
-        var order = shuffle(teams.map(function (_, i) { return i; })).sort(function (a, b) {
-          function cost(team, i) {
-            var tierCost = unit.tiers.reduce(function (sum, count, t) { return sum + count * team.tiers[t] / Math.max(1, totalTiers[t]); }, 0);
-            var genderCost = unit.genders.reduce(function (sum, count, g) { return sum + count * team.genders[g] / Math.max(1, totalGenders[g]); }, 0);
-            return team.score / Math.max(1, maxScore) * 100 + team.size / targets[i] * 20 + genderCost + tierCost;
-          }
-          return cost(teams[a], a) - cost(teams[b], b);
-        });
-        for (var o = 0; o < order.length && !exhausted; o++) {
-          var index = order[o], dest = teams[index], stateKey = signature(dest, index);
-          if (seen.has(stateKey)) continue;
-          seen.add(stateKey);
-          if (dest.size + unit.size > targets[index] || dest.score + unit.score > maxScore) continue;
-          add(dest, unit, 1); dest.units.push(unit);
-          if (search(at + 1)) return true;
-          dest.units.pop(); add(dest, unit, -1);
-        }
-        if (!exhausted) failed.add(key);
-        return false;
-      }
-      search(0);
-    }
-    if (!answer) return { code: anyExhausted ? "DRAW_SEARCH_LIMIT" : "DRAW_CONSTRAINTS", error: anyExhausted
-      ? "Could not find a valid draw. Try again, choose fewer teams, or adjust attendance."
-      : "No draw can keep attending teammates together, keep total team sizes within 1, and keep the Fris Index gap within 2. Change the team count or attendance." };
-
-    // Improve the Fris Index first, then gender ratios, retaining hard limits.
-    // Complete units move together, so a refinement can never split buddies.
     function metric() {
-      var tierCost = 0, genderCost = 0, positionCost = 0, indexCost = 0;
-      answer.forEach(function (team) {
-        team.tiers.forEach(function (count) { tierCost += count * count; });
-        team.genders.forEach(function (count, g) { genderCost += Math.pow(count * total - totalGenders[g] * team.size, 2); });
-        team.positions.forEach(function (count) { positionCost += count * count; });
-        indexCost += team.score * team.score;
-      });
-      return [spread(answer.map(function (team) { return team.score; })), indexCost, genderCost, tierCost, positionCost];
-    }
-    function less(a, b) { for (var i = 0; i < a.length; i++) { if (a[i] !== b[i]) return a[i] < b[i]; } return false; }
-    for (var pass = 0; pass < 60; pass++) {
-      var best = null, bestMetric = metric();
+      var joint = 0, positions = 0;
       for (var a = 0; a < n; a++) for (var b = a + 1; b < n; b++) {
-        for (var x = 0; x < answer[a].units.length; x++) for (var y = 0; y < answer[b].units.length; y++) {
-          var u = answer[a].units[x], v = answer[b].units[y];
-          var sa = answer[a].size - u.size + v.size, sb = answer[b].size - v.size + u.size;
-          if (sa < minSize || sa > maxSize || sb < minSize || sb > maxSize) continue;
-          add(answer[a], u, -1); add(answer[a], v, 1); add(answer[b], v, -1); add(answer[b], u, 1);
-          if (spread(answer.map(function (team) { return team.score; })) <= 20) {
-            var candidate = metric();
-            if (candidate[0] <= winningGap && less(candidate, bestMetric)) { bestMetric = candidate; best = [a, x, b, y]; }
-          }
-          add(answer[a], v, -1); add(answer[a], u, 1); add(answer[b], u, -1); add(answer[b], v, 1);
-        }
+        // Normalize the allowed 2-point Index difference to one player.
+        joint += Math.pow((index(teams[a]) - index(teams[b])) / 2, 2) + Math.pow(teams[a].size - teams[b].size, 2);
+        teams[a].tiers.forEach(function (count, t) { joint += Math.pow(count - teams[b].tiers[t], 2); });
+        teams[a].positions.forEach(function (count, p) { positions += Math.pow(count - teams[b].positions[p], 2); });
       }
-      if (!best) break;
-      var first = answer[best[0]], second = answer[best[2]], u = first.units[best[1]], v = second.units[best[3]];
-      add(first, u, -1); add(first, v, 1); add(second, v, -1); add(second, u, 1);
-      first.units[best[1]] = v; second.units[best[3]] = u;
+      return [joint, positions];
     }
-    var result = shuffle(answer.map(function (team) { return team.units.reduce(function (members, unit) { return members.concat(unit.members); }, []); }));
+    function better(a, b) { return !b || a[0] < b[0] || (a[0] === b[0] && a[1] < b[1]); }
+    function signature(team, i) { return [targets[i], team.size, team.base].concat(team.tiers, team.positions).join(","); }
+    var best = null, bestMetric = null, nodes = 0, limit = options.maxNodes || 200000, visited = new Set();
+    function lowerBound(at) {
+      var bound = 0;
+      for (var a = 0; a < n; a++) for (var b = a + 1; b < n; b++) bound += Math.pow(targets[a] - targets[b], 2);
+      FB.TIERS.forEach(function (_, tier) {
+        var values = teams.map(function (team) { return team.tiers[tier]; });
+        for (var r = 0; r < remaining[at][tier]; r++) {
+          var smallest = 0;
+          for (var i = 1; i < n; i++) if (values[i] < values[smallest]) smallest = i;
+          values[smallest]++;
+        }
+        for (var a = 0; a < n; a++) for (var b = a + 1; b < n; b++) bound += Math.pow(values[a] - values[b], 2);
+      });
+      return bound;
+    }
+    function search(at) {
+      if (++nodes > limit) return;
+      if (bestMetric && lowerBound(at) > bestMetric[0]) return;
+      if (at === units.length) {
+        if (teams.some(function (team, i) { return team.size !== targets[i]; })) return;
+        var scores = teams.map(index);
+        if (Math.max.apply(null, scores) - Math.min.apply(null, scores) > 2) return;
+        var value = metric();
+        if (better(value, bestMetric)) {
+          bestMetric = value;
+          best = teams.map(function (team) { return team.units.reduce(function (members, unit) { return members.concat(unit.members); }, []); });
+        }
+        return;
+      }
+      var key = at + ":" + teams.map(signature).sort().join(";");
+      if (visited.has(key)) return;
+      visited.add(key);
+      var unit = units[at], seen = new Set();
+      var order = shuffle(teams.map(function (_, i) { return i; })).filter(function (i) { return teams[i].size + unit.size <= targets[i]; });
+      var costs = {};
+      order.forEach(function (i) { add(teams[i], unit, 1); costs[i] = metric(); add(teams[i], unit, -1); });
+      order.sort(function (a, b) { return costs[a][0] - costs[b][0] || costs[a][1] - costs[b][1]; });
+      for (var o = 0; o < order.length && nodes < limit; o++) {
+        var i = order[o], state = signature(teams[i], i);
+        if (seen.has(state)) continue;
+        seen.add(state);
+        add(teams[i], unit, 1); teams[i].units.push(unit);
+        search(at + 1);
+        teams[i].units.pop(); add(teams[i], unit, -1);
+      }
+    }
+    search(0);
+    if (!best) return { code: nodes >= limit ? "DRAW_SEARCH_LIMIT" : "DRAW_CONSTRAINTS", error: nodes >= limit
+      ? "Could not find a valid draw. Try again or choose fewer teams."
+      : "No draw can keep attending teammates together, keep total team sizes within 1, and keep the Fris Index gap within 2. Change the team count or attendance." };
+    var result = shuffle(best);
     return { teams: result, balance: FB.drawBalance(result), searchNodes: nodes };
   };
 

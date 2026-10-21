@@ -31,10 +31,26 @@
 
   function syncRole() { admin.hidden = !isManager(); }
 
+  function showImage(source) {
+    image.onload = function () {
+      image.style.visibility = "visible";
+      image.parentElement.setAttribute("aria-busy", "false");
+    };
+    image.onerror = function () {
+      image.style.visibility = "hidden";
+      image.parentElement.setAttribute("aria-busy", "false");
+      status.textContent = "Could not load the QR code. Please refresh.";
+    };
+    image.src = source;
+  }
+
   function loadImage() {
     request("GET").then(function (result) {
-      if (result.image) image.src = result.image;
-    }).catch(function () { /* The bundled QR remains available offline. */ });
+      if (result.image) showImage(result.image);
+    }).catch(function () {
+      image.parentElement.setAttribute("aria-busy", "false");
+      status.textContent = "Could not load the QR code. Please refresh.";
+    });
   }
 
   syncRole();
@@ -59,7 +75,7 @@
     };
     reader.onload = function () {
       request("PUT", { image: String(reader.result) }).then(function (result) {
-        image.src = result.image;
+        showImage(result.image);
         status.textContent = "QR code updated.";
       }).catch(function (error) {
         status.textContent = error.message || "Could not update the QR code.";

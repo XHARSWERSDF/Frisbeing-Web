@@ -255,7 +255,7 @@
       '<button class="fdisc beckon" data-act="reveal" type="button" aria-label="Spin the disc to see your team">' +
       DISC + '</button>' +
       '<h2 class="see-team">TEAM!!!</h2>' +
-      '<div class="progress" id="tnProg" aria-hidden="true">' + BARS + '</div>';
+      '<div class="progress" id="tnProg" aria-hidden="true">' + BARS + '</div>' + (sessionStarted(state.tonight) ? '' : changeAnswerHtml());
   }
 
   function revealHtml(mine) {
@@ -271,8 +271,8 @@
       '<span class="see-team">Team</span> ' +
       '<span class="team-letter">' + esc(mine.letter) + '</span></h2>' +
       '<ul class="mates">' + names.map(function (p, i) {
-        return '<li' + (p.name === me ? ' class="me"' : '') + ' style="animation-delay:' +
-          (reduce ? 0 : 750 + i * 60) + 'ms"><span>' + esc(p.name) + '</span></li>';
+        return '<li' + ' class="' + (p.name === me ? 'me ' : '') + (p.lateJoin ? 'late-join' : '') + '"' + ' style="animation-delay:' +
+          (reduce ? 0 : 750 + i * 60) + 'ms"><span>' + esc(p.name) + '</span>' + (p.lateJoin ? '<small class="late-join-label">New</small>' : '') + '</li>';
       }).join("") + '</ul>' + (sessionStarted(state.tonight) ? '' : '<button class="tn-link" data-act="pass" type="button">Leave this session</button>') +
       '<p class="tn-error" id="tnError"></p>';
   }
@@ -297,15 +297,13 @@
     }
     if (!t) return paint('<p class="tn-small">Checking tonight&hellip;</p>');
     if (!t.isGame) return paint(noGameHtml());
-    if (t.needsRedraw && t.me && t.me.rsvp === "in" && !t.mine) {
-      return paint('<h2 class="tn-big tn-answer">You’re in!</h2><p class="tn-small">Waiting for the updated teams.</p>' + (t.canJoin ? changeAnswerHtml() : ''));
-    }
     if (state.sessionStartedShown) {
       if (t.drawn && t.mine) return paint(revealedAlready(t) ? revealHtml(t.mine) : seeYourTeamHtml());
       return paint(startedHtml());
     }
     if (!t.signedIn) return paint(gameHtml() + signInHtml());
 
+    if (state.changing) return paint(gameHtml() + choiceHtml());
     if (t.drawn) {
       if (!t.mine) return paint(gameHtml() + choiceHtml());
       return paint(revealedAlready(t) ? revealHtml(t.mine) : seeYourTeamHtml());
@@ -809,7 +807,7 @@
         return '<li class="assignment-row' + (grouped ? ' teammate-unit' : '') + '"' + (isAdmin()
           ? ' data-drag-player-id="' + esc(unit[0].id) + '" data-source-team="' + i + '"'
           : '') + '>' + unit.map(function (p) {
-            return '<div class="assignment-name">' + tierHtml(p.tier) + nameHtml(p) + '</div>';
+            return '<div class="assignment-name' + (p.lateJoin ? ' late-join' : '') + '">' + tierHtml(p.tier) + nameHtml(p) + (p.lateJoin ? '<small class="late-join-label">New</small>' : '') + '</div>';
           }).join("") + '</li>';
       }).join("");
       var score = isAdmin() ? FB.frisIndex(team) : 0;
@@ -860,7 +858,6 @@
     h += '</div><p class="tn-error" id="drawError"></p>';
 
     if (hasTeams && v.teams) {
-      if (v.needsRedraw) h += '<p class="tn-error" role="status">Attendance changed. Draw teams again. Previous teams are kept until then. ' + esc(v.redrawReason || '') + '</p>';
       if (v.hasDraft) {
         h += '<p class="shared-banner"><b>Unpublished draft.</b> Only admins can see these teams. Publish when ready to notify players.</p>';
       } else {
@@ -871,7 +868,7 @@
       }
       h += '<div class="teams-grid">' + teamsHtml(v.teams) + '</div><div class="row draw-actions">';
       if (v.hasDraft) {
-        h += '<button class="btn solid" data-act="publish" type="button"' + (v.needsRedraw ? ' disabled' : '') + '><span>Publish teams</span></button>';
+        h += '<button class="btn solid" data-act="publish" type="button"' + '' + '><span>Publish teams</span></button>';
       } else {
         h += '<button class="btn danger" data-act="undraw" type="button"><span>Take teams back</span></button>';
       }
@@ -900,6 +897,9 @@
     } else {
       h += '<div class="day-cols">' + whoHtml("Joined", v.joined || [], false) + whoHtml("Passing", v.passed || [], true) + '</div>';
       if (isToday) h += drawZoneHtml(v);
+      else if (past && isAdmin() && v.teams) {
+        h += '<div class="draw-zone"><div class="teams-grid">' + teamsHtml(v.teams) + '</div><p class="tn-error" id="drawError"></p></div>';
+      }
       if (!past) h += '<div class="row day-actions"><button class="btn danger" data-act="remove" type="button"><span>Call off this session</span></button></div>';
     }
     dayEl.innerHTML = h;

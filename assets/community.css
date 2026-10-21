@@ -36,3 +36,34 @@
 .dev-superman-controls { position: fixed; right: 14px; bottom: 104px; z-index: 1201; display: flex; flex-direction: column; gap: 8px; max-width: calc(100vw - 28px); }
 
 #passionSupermanTitle { color: #ff4545; }
+
+.assignment-name.late-join, .mates .late-join { background: rgba(240,201,105,.16); border-radius: 4px; padding: 5px 8px; }
+.late-join-label { margin-left: auto; color: #f0c969; font-size: 11px; }
+.attendance-stepper { display: inline-flex; align-items: center; border: 1px solid var(--line, #315c48); border-radius: 4px; }
+.attendance-stepper button { width: 38px; height: 38px; border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 20px; }
+.attendance-stepper output { min-width: 36px; text-align: center; font-variant-numeric: tabular-nums; }
+
+.member.attendance-row { grid-template-columns: minmax(0, 1fr) auto; }
+
+#memberList .member.attendance-row { display: flex; justify-content: space-between; align-items: center; width: 100%; text-align: left; }
+#memberList .member.attendance-row > .nm { flex: 1; min-width: 0; margin: 0; text-align: left; justify-self: start; }
+#memberList .member.attendance-row > .nm small { text-align: left; }
+#memberList .member.attendance-row > .attendance-stepper { flex: 0 0 auto; margin-left: auto; }
+.teammate-sent .teammate-declined-notice { display: flex; align-items: center; gap: 12px; }
+.teammate-sent .btn.teammate-dismiss { flex: 0 0 auto; margin-left: auto; padding: 4px 9px; min-height: 26px; font-size: 11px; line-height: 1.3; }
+#gearhubMemberBagsDialog[open] { overflow: hidden; }
+#gearhubMemberBagsDialog > .gearhub-dialog-close { position: absolute; top: 12px; right: 12px; z-index: 3; background: var(--field); }
+#gearhubMemberBagsDialog > .gearhub-cart-content { overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; overscroll-behavior: contain; }
+#gearhubMemberBagsDialog > .gearhub-cart-content::-webkit-scrollbar { display: none; width: 0; height: 0; }
+#gearhubMemberBagsTitle { padding-right: 36px; }
+.feedback-panel { margin-top: 16px; }
+.feedback-panel h3 { margin: 0 0 12px; color: #fff; }
+.feedback-panel textarea { box-sizing: border-box; display: block; width: 100%; resize: vertical; min-height: 110px; padding: 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--ink); color: var(--chalk); font: inherit; }
+.feedback-panel textarea::placeholder { color: var(--mist); }
+.feedback-panel .row { justify-content: space-between; margin-top: 12px; }
+#feedbackStatus, #feedbackInboxStatus { color: var(--mist); font-size: 13px; }
+#feedbackSubmit { margin-left: auto; }
+#feedbackInbox { margin-top: 24px; }
+.feedback-entry { padding: 14px 0; border-top: 1px solid var(--line); }
+.feedback-entry small { color: var(--mist); }
+.feedback-entry p { margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }

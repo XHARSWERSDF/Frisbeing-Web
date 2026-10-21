@@ -36,6 +36,9 @@
   }
   function previewNorm(value) { return String(value || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ""); }
   var data;
+  window.addEventListener("storage", function (event) {
+    if (event.key === DATA) { data = null; if (window.FBNav && FBNav.refresh) FBNav.refresh(); }
+  });
   function getData() {
     if (!data) try { data = JSON.parse(localStorage.getItem(DATA)); } catch (e) { /* first preview */ }
     if (!data) {
@@ -139,7 +142,7 @@
       v.needsRedraw = !!g.draw.needsRedraw;
       if (manages) v.redrawReason = g.draw.redrawReason || null;
       var idx = published && signedIn() && v.me.rsvp === "in" ? g.draw.teams.findIndex(function (t) { return t.some(function (p) { return p.id === id; }); }) : -1;
-      v.mine = idx < 0 ? null : { letter: "ABCDEFGHIJKL"[idx], members: g.draw.teams[idx].map(function (p) { return p.name; }), players: g.draw.teams[idx], position: g.draw.teams[idx].find(function (p) { return p.id === id; }).position };
+      v.mine = idx < 0 ? null : { letter: "ABCDEFGHIJKL"[idx], members: g.draw.teams[idx].map(function (p) { return p.name; }), players: g.draw.teams[idx].map(function (p) { return { id: p.id, name: p.name, position: FB.position(p), lateJoin: !!p.lateJoin }; }), position: g.draw.teams[idx].find(function (p) { return p.id === id; }).position };
     }
     return v;
   }
@@ -168,9 +171,9 @@
     }).filter(function (invitation) { return invitation.kind !== "unavailable"; });
   }
   function teammateInvitationsSentBy(userId) {
-    return getData().teammateInvitations.filter(function (invitation) { return invitation.status === "pending" && invitation.fromUserId === userId; })
+    return getData().teammateInvitations.filter(function (invitation) { return ["pending", "declined"].includes(invitation.status) && !invitation.dismissed && invitation.fromUserId === userId; })
       .map(function (invitation) {
-        var current = previewInvitationState(invitation, invitation.toMember);
+        var current = invitation.status === "declined" ? { kind: "declined", message: "Your request was declined." } : previewInvitationState(invitation, invitation.toMember);
         return { id: invitation.id, memberName: invitation.toMember, createdAt: invitation.createdAt, kind: current.kind, message: current.message };
       });
   }
@@ -205,12 +208,32 @@
     return Promise.resolve().then(function () {
       var d = getData(), url = new URL(path, "https://preview.invalid"), route = url.pathname, result;
       if (method !== "GET" && role() === "guest") throw new Error("Sign in to use this action.");
-      if (method !== "GET" && (role() === "player" || role() === "guest") && !/\/rsvp$/.test(route) && route !== "/me/gear-bag" && route !== "/me/preferences" && route !== "/me/passion-star/seen" && route !== "/me/passion-superman/seen" && route.indexOf("/me/teammate-invitations") !== 0 && route.indexOf("/me/teammate-group") !== 0) throw new Error("Switch to Admin or Admin Manager preview to use this control.");
+      if (method !== "GET" && (role() === "player" || role() === "guest") && !/\/rsvp$/.test(route) && route !== "/me/gear-bag" && route !== "/me/preferences" && route !== "/feedback" && route !== "/me/passion-star/seen" && route !== "/me/passion-superman/seen" && route.indexOf("/me/teammate-invitations") !== 0 && route.indexOf("/me/teammate-group") !== 0) throw new Error("Switch to Admin or Admin Manager preview to use this control.");
+      if (route === "/feedback" && method === "POST") {
+        var message = typeof (body && body.message) === "string" ? body.message.trim() : "";
+        if (!message || message.length > 4000) throw new Error("Write feedback between 1 and 4,000 characters.");
+        d.feedback = d.feedback || [];
+        d.feedback.push({ id: "feedback-" + Date.now() + "-" + Math.random().toString(36).slice(2), message: message, createdAt: Date.now() });
+        persist(); return { ok: true };
+      }
+      if (route === "/feedback" && method === "GET") {
+        if (role() !== "admin" && role() !== "leader") throw new Error("Only Admin and Admin Manager accounts can view feedback.");
+        return { feedback: (d.feedback || []).map(function (entry) { return { id: entry.id, message: entry.message, createdAt: entry.createdAt }; }).reverse() };
+      }
+      if (route === "/roster-attendance" && method === "PUT") {
+        var member = d.roster.find(function (entry) { return previewNorm(entry.name) === previewNorm(body.name); });
+        if (!member || [1, -1].indexOf(body.delta) < 0) throw new Error("Choose a member and +1 or -1.");
+        d.walkInCounts = d.walkInCounts || {};
+        var key = previewNorm(member.name);
+        d.walkInCounts[key] = Math.max(0, (Number(d.walkInCounts[key]) || 0) + body.delta);
+        persist();
+        return { name: member.name, walkInCount: d.walkInCounts[key] };
+      }
       if (route === "/roster-attendance" && method === "GET") {
         if (role() !== "admin" && role() !== "leader") throw new Error("Admin preview required.");
         return { members: d.roster.map(function (member) {
           var account = d.accounts.find(function (entry) { return entry.member && previewNorm(entry.member) === previewNorm(member.name); });
-          return { name: member.name, attendanceCount: Math.max(0, Number(account && account.attendanceCount) || 0) };
+          return { name: member.name, attendanceCount: Math.max(0, Number(account && account.attendanceCount) || 0), walkInCount: Math.max(0, Number((d.walkInCounts || {})[previewNorm(member.name)]) || 0) };
         }) };
       }
       if (route === "/version") return { version: d.version, games: d.version };
@@ -344,6 +367,10 @@
         var current = user(), group = groupFor(current.email), slots = group ? 3 - group.members.length : 2;
         if (group && group.leaderId !== current.email) throw new Error("Only the group captain can invite teammates.");
         if (selected.length > slots) throw new Error(group ? "Your group can invite one more member." : "You can invite up to two teammates.");
+        var joinRequests = selected.filter(function (name) {
+          return previewInvitationState({ fromUserId: current.email }, name).kind === "invite-back";
+        });
+        if (joinRequests.some(function (name) { return (body.confirmJoinRequests || []).indexOf(name) < 0; })) return { confirmationRequired: joinRequests };
         d.preferredTeammates = d.preferredTeammates || {};
         d.preferredTeammates[role()] = selected;
         d.teammateInvitations = d.teammateInvitations.filter(function (invitation) {
@@ -381,6 +408,12 @@
         return { teammateGroup: teammateGroupView(groupFor(captain.email), captain.email), teammateInvitations: teammateInvitationsFor(captain.member),
           teammateInvitationsSent: teammateInvitationsSentBy(captain.email) };
       }
+      var dismissInvitation = /^\/me\/teammate-invitations\/([^/]+)\/dismiss$/.exec(route);
+      if (dismissInvitation && method === "POST") {
+        var notice = d.teammateInvitations.find(function (entry) { return entry.id === dismissInvitation[1] && entry.fromUserId === user().email && entry.status === "declined"; });
+        if (!notice) throw new Error("Notice no longer available.");
+        notice.dismissed = true; persist(); return { ok: true };
+      }
       var teammateRespond = /^\/me\/teammate-invitations\/([^/]+)\/respond$/.exec(route);
       if (teammateRespond && method === "POST") {
         if (!["accept", "decline"].includes(body && body.response)) throw new Error("Choose accept or decline.");
@@ -393,8 +426,8 @@
           if (currentState.kind === "unavailable") throw new Error(currentState.message);
           if (body.expectedKind && body.expectedKind !== currentState.kind) throw new Error("Team membership changed. Review the updated invitation and try again.");
           if (currentState.kind === "invite-back") {
-            addTeammateInvitation(recipient, invitation.fromName);
-            invitation.status = "invited-back";
+            groupFor(recipient.email).members.push({ id: invitation.fromUserId, name: invitation.fromName });
+            invitation.status = "accepted";
           } else {
             var inviterGroup = groupFor(invitation.fromUserId);
             if (!inviterGroup) {
@@ -444,8 +477,7 @@
           (body.status === "in" ? g.joined : g.passed).push(person);
           if (g.draw) {
             var refreshed = FB.refreshDrawAttendance(g.draw.teams, drawingPlayers(g));
-            if (refreshed.reason) { g.draw.needsRedraw = true; g.draw.redrawReason = refreshed.reason; }
-            else { g.draw.teams = refreshed.teams; g.draw.needsRedraw = false; g.draw.redrawReason = null; }
+            g.draw.teams = refreshed.teams; g.draw.needsRedraw = false; g.draw.redrawReason = null;
           }
         } else if (action === "draw") {
           if (method === "DELETE") g.draw = null;
@@ -453,7 +485,7 @@
         } else if (action === "publish" && method === "POST") {
           if (!g.draw) throw new Error("Draw teams before publishing.");
           if (g.draw.published !== false) throw new Error("These teams are already published.");
-          if (g.draw.needsRedraw) throw new Error("Attendance changed. Draw teams again before publishing.");
+
           g.draw.published = true;
           g.draw.publishedAt = Date.now();
         } else if (action === "assignment" && g.draw) {
@@ -467,8 +499,7 @@
             var moved = FB.moveTeamMember(candidate, body.id, body.team);
             if (moved.error) throw new Error(moved.error);
             g.draw.teams = moved.teams;
-            g.draw.published = false;
-            delete g.draw.publishedAt;
+            if (date >= dateAt(0)) { g.draw.published = false; delete g.draw.publishedAt; }
           }
           if (body.position) g.draw.teams.forEach(function (t) { t.forEach(function (p) { if (p.id === body.id) p.position = body.position; }); });
         } else throw new Error("This preview action is unavailable.");
@@ -478,6 +509,25 @@
     }).then(function (result) { return JSON.parse(JSON.stringify(result)); });
   }
   function simulateTeammates(kind) {
+    if (kind === "declined" || kind === "join-existing") {
+      localStorage.setItem(KEY, "1");
+      localStorage.setItem(ROLE, "player");
+      var simulation = getData();
+      var affected = ["preview-member@tsinglan.org", "preview-admin@tsinglan.org", "preview-admin-manager@tsinglan.org"];
+      simulation.teammateGroups = simulation.teammateGroups.filter(function (group) {
+        return !group.members.some(function (member) { return affected.indexOf(member.id) >= 0; });
+      });
+      simulation.teammateInvitations = simulation.teammateInvitations.filter(function (entry) { return !entry.demo; });
+      if (kind === "declined") {
+        simulation.teammateInvitations.push({ id: "demo-declined-" + Date.now(), fromUserId: affected[0],
+          fromName: "Demo Alex", toMember: "Demo Jamie", status: "declined", createdAt: Date.now(), respondedAt: Date.now(), demo: true });
+      } else {
+        simulation.teammateGroups.push({ id: "demo-existing-team", leaderId: affected[1], leaderName: "Demo Jamie",
+          members: [{ id: affected[1], name: "Demo Jamie" }, { id: affected[2], name: "Demo Taylor" }], demo: true });
+      }
+      persist();
+      return;
+    }
     if (kind === "session-pair" || kind === "session-pair-reset") {
       localStorage.setItem(KEY, "1");
       localStorage.setItem(ROLE, "admin");

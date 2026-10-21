@@ -3,22 +3,22 @@ const assert = require('node:assert/strict');
 const FB = require('../assets/engine.js');
 const player = (id, tier, group = null, gender = '') => ({ id, name: id, tier, teammateGroupId: group, gender, position: 'c' });
 
-test('Fris Index uses 4/3.3/2/1.5 base points and only the highest eligible bonus per attending group', () => {
-  assert.equal(FB.score(FB.TIERS.map((t, i) => player(String(i), t))), 10.8);
-  for (const [tier, expected] of [['A', 2], ['I', 1], ['B', 0], ['U', 0]]) {
+test('Fris Index uses 4/3/2/1 base points and any team with two T1s gets +2', () => {
+  assert.equal(FB.score(FB.TIERS.map((t, i) => player(String(i), t))), 10);
+  for (const [tier, expected] of [['A', 2], ['I', 0], ['B', 0], ['U', 0]]) {
     for (const count of [2, 3]) {
       const group = Array.from({ length: count }, (_, i) => player(String(i), tier, 'g'));
       assert.equal(FB.score(group), Math.round((count * FB.WEIGHT[tier] + expected) * 10) / 10);
     }
   }
-  for (const [tiers, bonus] of [[['A', 'I'], 2], [['A', 'B'], 0], [['I', 'B'], 0], [['A', 'U'], 0],
-    [['A', 'A', 'I'], 2], [['A', 'I', 'I'], 2], [['A', 'I', 'B'], 2], [['B', 'B', 'A'], 0]]) {
+  for (const [tiers, bonus] of [[['A', 'I'], 0], [['A', 'B'], 0], [['I', 'B'], 0], [['A', 'U'], 0],
+    [['A', 'A', 'I'], 2], [['A', 'I', 'I'], 0], [['A', 'I', 'B'], 0], [['B', 'B', 'A'], 0]]) {
     const group = tiers.map((tier, i) => player(String(i), tier, 'g'));
     assert.equal(FB.score(group), Math.round((tiers.reduce((sum, tier) => sum + FB.WEIGHT[tier], 0) + bonus) * 10) / 10, tiers.join('/'));
   }
   assert.equal(FB.score([player('a', 'A', 'g')]), 4, 'an absent teammate adds nothing');
-  assert.equal(FB.score([player('a', 'A', 'g1'), player('b', 'A', 'g2')]), 8, 'same field team is not the same registered team');
-  assert.equal(FB.score([player('a', 'I', 'g'), player('b', 'I', 'g'), player('c', 'A'), player('d', 'B'), player('e', 'B')]), 15.6);
+  assert.equal(FB.score([player('a', 'A', 'g1'), player('b', 'A', 'g2')]), 10, 'any two T1s in a field team get the bonus');
+  assert.equal(FB.score([player('a', 'I', 'g'), player('b', 'I', 'g'), player('c', 'A'), player('d', 'B'), player('e', 'B')]), 14);
 });
 
 test('only attending buddies stay together; successful draws respect size and index for every pair of teams', () => {
@@ -32,7 +32,7 @@ test('only attending buddies stay together; successful draws respect size and in
   assert.ok(result.balance.sizeGap <= 1);
   assert.equal(JSON.stringify(people), before);
   // A third registered teammate who did not sign up is not in the input or score.
-  assert.equal(FB.score(people.slice(0, 2)), 9.3);
+  assert.equal(FB.score(people.slice(0, 2)), 7);
 });
 
 test('unsatisfiable attendance returns an error without splitting a group or publishing an invalid draw', () => {
@@ -47,7 +47,7 @@ test('unsatisfiable attendance returns an error without splitting a group or pub
   }
 });
 
-test('small draws match exhaustive search for the best feasible index gap; tier counts are not a hard limit', () => {
+test('small draws match exhaustive search for the joint Index, tier and size objective', () => {
   let seed = 17;
   const random = n => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed % n; };
   for (let round = 0; round < 50; round++) {
@@ -58,13 +58,13 @@ test('small draws match exhaustive search for the best feasible index gap; tier 
       const teams = [[], []];
       units.forEach((u, i) => teams[(mask >> i) & 1].push(...u));
       const balance = FB.drawBalance(teams);
-      if (teams.every(t => t.length) && balance.sizeGap <= 1 && balance.frisGap <= 2) bestGap = Math.min(bestGap, balance.frisGap);
+      if (teams.every(t => t.length) && balance.sizeGap <= 1 && balance.frisGap <= 2) bestGap = Math.min(bestGap, balance.frisGap ** 2 / 4 + balance.sizeGap ** 2 + balance.tierGaps.reduce((sum, gap) => sum + gap ** 2, 0));
     }
-    const result = FB.sort(people, 'fair', 2);
-    if (bestGap === Infinity) assert.equal(result.code, 'DRAW_CONSTRAINTS');
+    const result = FB.sort(people, 'fair', 2, { maxNodes: 1000000 });
+    if (result.error) assert.equal(bestGap, Infinity);
     else {
-      assert.equal(result.error, undefined);
-      assert.equal(result.balance.frisGap, bestGap);
+      assert.notEqual(bestGap, Infinity);
+      assert.equal(result.balance.frisGap ** 2 / 4 + result.balance.sizeGap ** 2 + result.balance.tierGaps.reduce((sum, gap) => sum + gap ** 2, 0), bestGap);
       assert.ok(result.balance.sizeGap <= 1);
       assert.equal(result.balance.splitTeammates, false);
       assert.equal(new Set(result.teams.flat().map(p => p.id)).size, people.length);
@@ -86,17 +86,19 @@ test('manual admin moves allow any team balance while keeping invalid targets sa
   assert.deepEqual(movedPair.teams[1].map(p => p.id), ['q', 'p1', 'p2']);
 });
 
-test('attendance changes preserve assignments when possible and request redraw when the limits cannot be kept', () => {
+test('attendance changes retain assignments, insert and highlight late arrivals, and immediately remove cancellations', () => {
   const teams = [[player('a', 'A'), player('b', 'I')], [player('c', 'A'), player('d', 'B')]];
   const before = JSON.stringify(teams);
   const late = FB.refreshDrawAttendance(teams, teams.flat().concat(player('late', 'A')));
-  assert.ok(late.reason);
+  assert.equal(late.reason, null);
+  assert.equal(late.teams.flat().find(p => p.id === "late").lateJoin, true);
   assert.equal(JSON.stringify(teams), before);
   const valid = FB.refreshDrawAttendance(teams, teams.flat().concat(player('late', 'U')));
   assert.equal(valid.reason, null);
   assert.equal(FB.drawError(valid.teams), null);
   const quit = FB.refreshDrawAttendance(teams, teams.flat().filter(p => p.id !== 'c'));
-  assert.ok(quit.reason);
+  assert.equal(quit.reason, null);
+  assert.ok(!quit.teams.flat().some(p => p.id === "c"));
   assert.equal(JSON.stringify(teams), before);
 });
 
@@ -105,7 +107,7 @@ test('same-tier headcounts can differ when the Fris Index and total sizes are ba
   const people = [player('a', 'B', 'trio'), player('b', 'B', 'trio'), player('c', 'B', 'trio'), player('d', 'A'), player('e', 'U'), player('f', 'U')];
   const result = FB.sort(people, 'fair', 2);
   assert.equal(result.error, undefined);
-  assert.equal(result.balance.frisGap, 1);
+  assert.equal(result.balance.frisGap, 0);
   assert.equal(result.balance.sizeGap, 0);
   assert.ok(result.balance.tierGaps.includes(3));
 });
@@ -115,7 +117,16 @@ test('four teams balance every pair while keeping four registered pairs together
   for (let i = 0; i < 4; i++) people.push(player('a' + i, 'A', 'g' + i, 'f'), player('b' + i, 'I', 'g' + i, 'm'), player('u' + i, 'U'));
   const result = FB.sort(people, 'fair', 4);
   assert.equal(result.error, undefined);
-  assert.deepEqual(result.balance.frisIndex, [10.8, 10.8, 10.8, 10.8]);
+  assert.deepEqual(result.balance.frisIndex, [8, 8, 8, 8]);
   assert.equal(result.balance.sizeGap, 0);
   assert.equal(result.balance.splitTeammates, false);
+});
+
+
+test('ungrouped T1s are shared across five-person teams', () => {
+  const people = ['A', 'A', 'I', 'I', 'B', 'B', 'B', 'B', 'U', 'U'].map((tier, i) => player(String(i), tier));
+  const result = FB.sort(people, 'fair', 2);
+  assert.equal(result.error, undefined);
+  assert.deepEqual(result.teams.map(team => team.filter(p => p.tier === 'A').length), [1, 1]);
+  assert.ok(result.balance.tierGaps.every(gap => gap <= 1));
 });

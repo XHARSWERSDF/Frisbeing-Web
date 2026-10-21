@@ -102,6 +102,28 @@
     document.body.appendChild(supermanControls);
   }
 
+  if (localDevelopment && window.FBPreview && FBPreview.simulateTeammates) {
+    var invitationControls = document.createElement("div");
+    invitationControls.className = "dev-invitation-controls";
+    invitationControls.style.cssText = "position:fixed;left:14px;bottom:58px;z-index:1201;display:flex;flex-direction:column;gap:8px;max-width:calc(100vw - 28px)";
+    [["Preview rejected request", "declined"], ["Preview join existing team", "join-existing"]].forEach(function (spec) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "dev-time-toggle";
+      button.textContent = spec[0];
+      button.addEventListener("click", function () {
+        if (spec[1] === "join-existing" && !window.confirm("Demo Jamie is already in a team with Demo Taylor. Request to join their team?")) return;
+        FBPreview.simulateTeammates(spec[1]);
+        var ready = spec[1] === "join-existing"
+          ? FBPreview.request("PUT", "/me/preferences", { preferredTeammates: ["Demo Jamie"], confirmJoinRequests: ["Demo Jamie"] })
+          : Promise.resolve();
+        ready.then(function () { window.location.assign("admin.html"); }).catch(function (error) { window.alert(error.message); });
+      });
+      invitationControls.appendChild(button);
+    });
+    document.body.appendChild(invitationControls);
+  }
+
   function syncUser(user) {
     var active = !!user || !!(window.FBPreview && FBPreview.signedIn && FBPreview.signedIn());
     document.body.classList.toggle("has-user-session", active);
@@ -148,7 +170,7 @@
       });
     }
     request.then(function (data) {
-      var pending = !!((data.teammateInvitations || []).length);
+      var pending = !!((data.teammateInvitations || []).length) || (data.teammateInvitationsSent || []).some(function (entry) { return entry.kind === "declined"; });
       if (requestId === inviteRequestId) {
         inviteBadge.hidden = !pending;
         if (storageKey) {
@@ -205,7 +227,7 @@
     if (document.visibilityState !== "hidden") {
       syncUser(window.FBAuth && FBAuth.user());
     }
-  }, 15000);
+  }, 3000);
   window.addEventListener("focus", function () { syncUser(window.FBAuth && FBAuth.user()); });
   document.addEventListener("visibilitychange", function () {
     if (document.visibilityState !== "hidden") syncUser(window.FBAuth && FBAuth.user());

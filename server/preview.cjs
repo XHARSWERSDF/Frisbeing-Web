@@ -22,10 +22,10 @@ const mime = {
 };
 const preview = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost:8931');
-  if (demo && await demo.handle(req, res, url)) return;
-  if (demo && url.pathname === '/admin.html') {
-    res.writeHead(302, { Location: '/__demo', 'Cache-Control': 'no-store' }); res.end(); return;
+  if (url.pathname === '/__demo') {
+    res.writeHead(302, { Location: '/admin.html', 'Cache-Control': 'no-store' }); res.end(); return;
   }
+  if (demo && await demo.handle(req, res, url)) return;
   if (demo && url.pathname === '/assets/auth-config.js') {
     res.writeHead(200, { 'Content-Type': mime['.js'], 'Cache-Control': 'no-store' }); res.end(demo.config); return;
   }
@@ -59,10 +59,22 @@ const preview = http.createServer(async (req, res) => {
     else res.end(content);
   });
 });
-const stop = () => { backend.kill(); preview.close(); };
+let stopping = false;
+const stop = () => {
+  if (stopping) return;
+  stopping = true;
+  backend.kill();
+  preview.close();
+  if (preview.closeAllConnections) preview.closeAllConnections();
+  // Bound shutdown even when a browser or proxy keeps a connection open.
+  setTimeout(() => {
+    backend.kill('SIGKILL');
+    process.exit(0);
+  }, 2000).unref();
+};
 preview.on('error', error => { console.error(error.message); backend.kill(); process.exitCode = 1; });
 backend.on('error', error => { console.error(error.message); preview.close(); process.exitCode = 1; });
 backend.on('exit', code => { preview.close(); process.exitCode = code || 0; });
 process.on('SIGTERM', stop);
 process.on('SIGINT', stop);
-preview.listen(8931, '127.0.0.1', () => console.log('Website preview: http://localhost:8931/' + (demo ? '__demo' : 'sort.html')));
+preview.listen(8931, '127.0.0.1', () => console.log('Website preview: http://localhost:8931/' + 'index.html'));

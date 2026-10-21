@@ -12,7 +12,7 @@
       }
       if (toGroup) {
         if (toGroup.members.length >= rules.maxMembers) return unavailable("Their team is full (3 members).");
-        return { kind: "invite-back", message: "Already in a team. Asked them to invite you to their team." };
+        return { kind: "invite-back", message: "Requested to join their team. Waiting for a response." };
       }
       if (fromGroup && fromGroup.members.length >= rules.maxMembers) return unavailable("The inviting team is full (3 members).");
       return { kind: "invite", message: "Waiting for a response." };

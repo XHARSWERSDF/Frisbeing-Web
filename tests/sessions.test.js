@@ -8,7 +8,7 @@ const { spawn } = require('node:child_process');
 const net = require('node:net');
 const FB = require('../assets/engine.js');
 
-test('fair draw balances Fris Index, total size and gender; late picks preserve input', () => {
+test('fair draw balances Fris Index, total size and tiers; late picks preserve input', () => {
   const players = [];
   for (const tier of FB.TIERS) for (const gender of ['f', 'm', '']) for (const position of ['h', 'c']) {
     for (let i = 0; i < 3; i++) players.push({ name: `${tier}-${gender}-${position}-${i}`, tier, gender, position });
@@ -20,7 +20,7 @@ test('fair draw balances Fris Index, total size and gender; late picks preserve 
     const spread = values => Math.max(...values) - Math.min(...values);
     assert.ok(spread(result.teams.map(t => t.length)) <= 1);
     assert.ok(spread(result.teams.map(FB.score)) <= 2);
-    for (const key of ['f', 'm', 'u']) {
+    for (const key of FB.TIERS) {
       assert.ok(spread(result.teams.map(t => FB.counts(t)[key])) <= 1, `uneven ${key}`);
     }
     const before = JSON.stringify(result.teams);
@@ -73,8 +73,11 @@ test('session API preserves pending draws, rejects invalid moves and persists ro
   const port = listener.address().port;
   await new Promise(r => listener.close(r));
   let processHandle;
-  const start = async () => {
-    processHandle = spawn(process.execPath, [path.join(__dirname, '../server/server.js')], {
+  const clockFile = path.join(temp, 'clock.cjs');
+  const start = async (time = '12:00:00') => {
+    const timestamp = Date.parse(today + 'T' + time + '+08:00');
+    fs.writeFileSync(clockFile, `const RealDate = Date; global.Date = class extends RealDate { constructor(...args) { super(...(args.length ? args : [${timestamp}])); } static now() { return ${timestamp}; } };`);
+    processHandle = spawn(process.execPath, ['--require', clockFile, path.join(__dirname, '../server/server.js')], {
       env: { ...process.env, PORT: String(port), DATA_FILE: dataFile, CLUB_TZ: 'Asia/Shanghai' }, stdio: ['ignore', 'pipe', 'pipe']
     });
     await new Promise((resolve, reject) => {
@@ -108,6 +111,11 @@ test('session API preserves pending draws, rejects invalid moves and persists ro
     assert.equal(saved.roster.find(m => m.name === 'Roxy Yang').tier, 'U');
     assert.equal(saved.roster.find(m => m.name === 'Roxy Yang').position, 'c');
     assert.equal(saved.roster.filter(m => m.name === 'Anne Guo').length, 1, 'source duplicates are merged');
+    await api('GET', '/roster-attendance', 'u1', undefined, 403);
+    await api('PUT', '/roster-attendance', 'u1', { name: 'Test One', delta: 1 }, 403);
+    assert.equal((await api('GET', '/roster-attendance', 'u0')).members.find(p => p.name === 'Test One').walkInCount, 0);
+    assert.equal((await api('PUT', '/roster-attendance', 'u0', { name: 'Test One', delta: 1 })).walkInCount, 1);
+    assert.equal((await api('GET', '/me', 'u1')).account.attendanceCount, 0);
     const emptyPublic = await api('GET', '/game');
     assert.deepEqual(emptyPublic.participants, []);
     assert.equal(emptyPublic.upcoming.date, tomorrow);
@@ -136,8 +144,8 @@ test('session API preserves pending draws, rejects invalid moves and persists ro
     assert.ok(!('teams' in memberView));
     const original = new Map(view.teams.flatMap((t, i) => t.map(p => [p.id, i])));
     let mine = await api('PUT', `${gameRoute}/rsvp`, 'u4', { status: 'in' });
-    assert.equal(mine.mine, null, 'late member waits for a redraw if adding them would exceed index limits');
-    assert.equal(mine.needsRedraw, true);
+    assert.equal(mine.mine, null, 'a late member cannot see an unpublished draft');
+    assert.equal(mine.needsRedraw, false);
     assert.ok(!('teams' in mine) && !('joined' in mine));
     assert.ok(mine.participants.some(p => p.name === 'Test Late'));
     assert.ok(mine.participants.every(p => Object.keys(p).join() === 'name'));
@@ -153,11 +161,13 @@ test('session API preserves pending draws, rejects invalid moves and persists ro
     await api('PUT', `/game/${tomorrow}/rsvp`, 'u4', { status: 'in' });
     view = await api('GET', '/game', 'u0');
     for (const [id, i] of original) assert.ok(view.teams[i].some(p => p.id === id));
-    assert.equal(view.teams.flat().length, 4, 'invalid attendance change keeps the previous result');
-    assert.ok(view.redrawReason);
+    assert.equal(view.teams.flat().length, 5, 'late arrival is immediately assigned');
+    assert.equal(view.teams.flat().find(p => p.id === 'u4').lateJoin, true);
+    assert.equal(view.redrawReason, null);
     view = await api('POST', `${gameRoute}/draw`, 'u0', { n: 2 });
     assert.equal(view.needsRedraw, false);
     assert.equal(FB.drawError(view.teams), null);
+    assert.ok(view.teams.flat().every(p => !p.lateJoin), "fresh sort clears late badges");
     await api('POST', `${gameRoute}/publish`, null, {}, 401);
     await api('POST', `${gameRoute}/publish`, 'u1', {}, 403);
     memberView = await api('GET', '/game', 'u4');
@@ -186,10 +196,10 @@ test('session API preserves pending draws, rejects invalid moves and persists ro
     assert.equal(mine.mine.position, 'c');
     mine = await api('PUT', `${gameRoute}/rsvp`, 'u4', { status: 'out' });
     assert.equal(mine.mine, null);
-    assert.equal(mine.needsRedraw, true);
+    assert.equal(mine.needsRedraw, false);
     assert.ok(!mine.participants.some(p => p.name === 'Test Late'), 'leaving removes the public name');
     mine = await api('PUT', `${gameRoute}/rsvp`, 'u4', { status: 'in' });
-    assert.equal(mine.mine.position, 'c', 'rejoining retains the previous session assignment');
+    assert.equal(mine.mine.position, 'h', 'rejoining uses the current roster position');
     assert.equal(mine.needsRedraw, false);
     await api('PUT', `${gameRoute}/rsvp`, 'unknown', { status: 'in' });
     view = await api('GET', '/game', 'u0');
@@ -204,6 +214,7 @@ test('session API preserves pending draws, rejects invalid moves and persists ro
     fs.writeFileSync(dataFile, JSON.stringify(saved));
     await stop();
     await start();
+    assert.equal((await api("GET", "/roster-attendance", "u0")).members.find(p => p.name === "Test One").walkInCount, 1);
     assert.equal(JSON.parse(fs.readFileSync(dataFile)).roster.find(m => m.name === 'Harry Xu').tier, 'B', 'tier migration runs once');
     assert.equal(JSON.parse(fs.readFileSync(dataFile)).roster.find(m => m.name === 'Michael Cheng').gender, 'f', 'later admin gender edits survive restart');
     assert.equal((await api('GET', '/game', 'u4')).mine.position, 'c', 'session position survives restart');
@@ -218,6 +229,12 @@ test('session API preserves pending draws, rejects invalid moves and persists ro
     assert.ok(view.teams[1].some(p => p.id === movedPlayer.id), 'admin can make an otherwise invalid manual move');
     assert.equal(view.drawn, false, 'manual changes return published teams to an admin-only draft');
     assert.equal(view.hasDraft, true);
+    await stop();
+    await start('20:09:59');
+    await api('PUT', `${gameRoute}/rsvp`, 'u4', { status: 'out' });
+    await stop();
+    await start('20:10:00');
+    await api('PUT', `${gameRoute}/rsvp`, 'u4', { status: 'in' }, 400);
     await api('DELETE', `${gameRoute}/draw`, 'u0');
     await api('PUT', `${gameRoute}/assignment`, 'u0', { id: 'u4', team: 0 }, 409);
   } finally { await stop(); fs.rmSync(temp, { recursive: true, force: true }); }

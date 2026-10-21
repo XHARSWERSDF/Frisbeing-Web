@@ -16,6 +16,7 @@
   var newPosition = "c";
   var tierFilter = "all";
   var attendanceCounts = Object.create(null);
+  var walkInCounts = Object.create(null);
   var filterRequest = 0;
   var displayedTier = Object.create(null);
 
@@ -149,6 +150,7 @@
       attendanceCounts = Object.create(null);
       (data.members || []).forEach(function (member) {
         attendanceCounts[memberKey(member)] = Math.max(0, Number(member.attendanceCount) || 0);
+        walkInCounts[memberKey(member)] = Math.max(0, Number(member.walkInCount) || 0);
       });
       tierFilter = "attendance";
       paint();
@@ -245,7 +247,7 @@
     }
     shownMembers.forEach(function (m) {
       var row = document.createElement("div");
-      row.className = "member";
+      row.className = "member" + (isAdmin() && tierFilter === "attendance" ? " attendance-row" : "");
 
       var nm = document.createElement("span");
       nm.className = "nm";
@@ -258,6 +260,33 @@
         nm.appendChild(attendance);
       }
       row.appendChild(nm);
+      if (isAdmin() && tierFilter === "attendance") {
+        var counter = document.createElement("div");
+        counter.className = "attendance-stepper";
+        counter.setAttribute("aria-label", m.name + ": attended without signing up");
+        var output = document.createElement("output");
+        output.textContent = String(walkInCounts[memberKey(m)] || 0);
+        [-1, 1].forEach(function (delta) {
+          var button = document.createElement("button");
+          button.type = "button";
+          button.textContent = delta < 0 ? "−" : "+";
+          button.setAttribute("aria-label", m.name + (delta < 0 ? ": subtract one walk-in" : ": add one walk-in"));
+          button.addEventListener("click", function () {
+            counter.querySelectorAll("button").forEach(function (b) { b.disabled = true; });
+            FBStore._request("/roster-attendance", { method: "PUT", body: { name: m.name, delta: delta } }).then(function (data) {
+              walkInCounts[memberKey(m)] = data.walkInCount;
+              output.textContent = String(data.walkInCount);
+            }).catch(function (error) { say(rosReport, [{ kind: "bad", html: esc(error.message) }]); })
+              .finally(function () { counter.querySelectorAll("button").forEach(function (b) { b.disabled = false; }); });
+          });
+          counter.appendChild(button);
+          if (delta < 0) counter.appendChild(output);
+        });
+        row.appendChild(counter);
+        listEl.appendChild(row);
+        return;
+      }
+
       if (isAdmin()) {
         var position = document.createElement("div");
         position.className = "position-buttons";

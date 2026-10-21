@@ -9,17 +9,11 @@ shapes below are all the website cares about.
 
 ## Run the reference server
 
-For a local preview with test accounts, run `node server/preview.cjs --demo`
-from the website folder, then open `http://localhost:8931/__demo`. Choose
-an admin, Handle, Cutter, T2, T3 or unclassified player, or browse as a guest.
-Open the chooser in separate tabs to test several accounts at once. Each tab
-keeps its own sign-in. Today and tomorrow are scheduled, with sample
-attendance ready for a draw and an extra Handle available to join late.
-
-Demo mode uses a temporary database and local signing keys, while the API
-still checks account permissions and signatures. It does not edit
-`server/data.json`. Restarting resets the demo. Run `node server/preview.cjs`
-without `--demo` to use the regular database and Microsoft sign-in.
+Run `node server/preview.cjs` from the website folder and open
+`http://localhost:8931/index.html`. My Profile remains the normal profile page.
+The removed `/__demo` account chooser now redirects to My Profile. Browser-only
+preview controls are available locally on My Profile; production hosts do not
+activate them.
 
 Known genders are sourced from the GitHub roster and applied once per
 `genderRevision` in `roster-update.json`. Confirmed renames retain their
@@ -231,44 +225,45 @@ called off.
 | `GET /schedule?month=2026-09` | anyone | — | `{ month, today, sessions: [{ date, kind, drawn, joined? }] }` — `kind` is `regular` or `extra`; `joined` counts only go to leaders and admins |
 | `POST /schedule` | leaders, admins | `{ "date", "action": "add" \| "remove" }` | `{ date, kind }`. Past days are refused. Removing a day deletes its answers and teams |
 | `GET /game?date=…` | anyone | — | That day as the asker may see it (defaults to today). Everyone: `{ date, today, isGame, kind, canJoin, participants: [{ name }] }`. Without a `date` query, also includes `upcoming`, tomorrow’s view. Signed in, also: `me.rsvp`, `drawn`, and `mine: { letter, members: [names] }` once teams are out. Leaders and admins, also: `joined` (with tier and gender), `passed`, and every team in `teams` |
-| `PUT /game/:date/rsvp` | signed in | `{ "status": "in" \| "out" }` | the updated view. Available on the session day and the previous calendar day in `CLUB_TZ`; tonight's answers close at 20:10. Each date has its own answer. Updates the attendance list. Applies the change to existing assignments only if all draw limits remain valid; otherwise retains the previous teams and sets `needsRedraw`. Repeating the same answer is a no-op |
+| `PUT /game/:date/rsvp` | signed in | `{ "status": "in" \| "out" }` | the updated view. Available on the session day and the previous calendar day in `CLUB_TZ`; tonight's answers close at 20:10. Each date has its own answer. Updates the attendance list. Automatically inserts new attendees and removes departures, preserving existing assignments and marking late arrivals. Repeating the same answer is a no-op |
 | `POST /game/:date/draw` | leaders, admins | `{ "n": 3 }` | the updated view, plus `notifying`: how many devices are being told |
 | `DELETE /game/:date/draw` | leaders, admins | — | takes the teams back and reopens answers |
-| `PUT /game/:date/assignment` | leaders, admins | `{ "id": "player-id", "team": 0, "position": "h" }` (team or position may be omitted) | updated view. Moves the player and their attending registered teammates to an existing zero-based team and/or changes their session position; `409` if no draw exists, a redraw is pending, or the move would violate size/group/Fris Index limits. Rejected moves do not change saved assignments |
+| `PUT /game/:date/assignment` | leaders, admins | `{ "id": "player-id", "team": 0, "position": "h" }` (team or position may be omitted) | updated view. Moves the player and their attending registered teammates to an existing zero-based team and/or changes their session position; `409` if no draw exists. Admins may override size/Index limits; registered teammates move together. Rejected moves do not change saved assignments |
 
 A draw is always **Fair teams** over everyone who answered `in`, using the
 shared `assets/engine.js` in the server and local preview. T1/T2/T3/T4 have
-base values 4/3.3/2/1.5. Members without a linked roster entry use T4. Registered
+base values 4/3/2/1. Members without a linked roster entry use T4. Registered
 teammates who attend are indivisible units; absent teammates contribute
 neither headcount nor points.
 
-Each registered group receives at most one bonus, taking the highest
-eligible value among its attending members: two or three T1s add 2, two or
-three T2s add 1; T3 and T4 pairs add 0. Having both T1 and T2
-also qualifies for 2; other mixed-tier pairs do not. Bonuses never stack.
-Thus T1+T1+T2 scores 13.3, and a T2 pair plus solo T1/T3/T3 scores 15.6.
+Each field team receives a +2 bonus when it has at least two attending T1
+players, whether or not they are registered teammates. T2, T3 and T4 players
+do not add a bonus.
+Thus T1+T1+T2 scores 13, and a T2 pair plus solo T1/T3/T3 scores 14.
 
-The sum is the field team's **Fris Index**. Any two field teams must differ
-by at most 1 in total headcount and at most 2 in Fris Index. Per-tier
-headcounts may differ. The solver searches for the smallest index gap,
-then improves gender ratios while preserving the constraints. It searches
-whole units with pruning and a bounded budget; if it cannot produce a valid
-result it returns an error, retaining any previous draw. A search limit is
-distinguished internally from a proven impossible allocation.
+The sum is the field team's **Fris Index**. Automatic draws keep total
+headcounts within 1 and Index values within 2. Inside these limits, the solver
+jointly minimizes pairwise squared Index differences (normalized by the
+2-point allowance), per-tier headcount differences and total headcount
+differences. Handle/Cutter distribution breaks ties. Gender is ignored.
+Registered teammates remain indivisible. A bounded search returns the best
+valid allocation found, or an error without overwriting the previous draw.
 
-Late signups or departures that invalidate existing assignments save the
-new attendance but retain the previous team snapshot. The game view exposes
-`needsRedraw`; admins also receive `redrawReason` and see a redraw notice.
-A new successful draw clears these flags. A member awaiting their first
-assignment sees that the updated teams are pending. The draw stores each
-player's account id and registered group id; group ids and tiers are only
-included in admin views.
+Until 20:10, members may change their answers even after teams are published.
+Late arrivals are automatically placed by tier, Index and headcount; existing
+assignments stay in place. Departures are removed immediately. These attendance
+updates do not demand a redraw even if a hard draw limit becomes impossible.
+Late arrivals have `lateJoin: true` and a highlighted name. A fresh sort clears
+the marker, creates a private draft, and still requires Publish to notify
+members. Members only see their own published team, with safe fields
+`id`, `name`, `position` and `lateJoin`; tiers and group identifiers are admin-only.
 
-`mine` also includes `position` and `players: [{ id, name, position }]` for
-the player's own team. No tiers or other teams are included. Admin team rows
-include positions. Assignment changes increment `games`, are saved, and
-notify the affected member. The draw's `at` remains stable during late joins
-and moves; only a new draw changes it.
+In Member's By attendance view, the left side still shows the member's name
+and cumulative sessions. Admin-only +/- controls on the right maintain a
+separate `walkInCount` (minimum 0) for attending without signing up. These
+counters are persisted independently and never change My Profile attendance.
+`GET /roster-attendance` includes the counters for admins;
+`PUT /roster-attendance` accepts `{ name, delta: 1 | -1 }` for admins only.
 
 Public `participants` contains display names only, including after a draw;
 it excludes tiers, positions, account identifiers, emails, passing lists and
@@ -336,3 +331,8 @@ signed in could make the server send requests anywhere.
 - The website keeps its own copy of the last known roster, so the sorter still
   works on a field with no signal. Draws made offline are not posted until the
   connection returns — the leader is told when that happens.
+
+Completed sessions retain their attendance snapshots and team assignments
+without an age-based purge. Admins can select an earlier date in Game and drag
+members between the saved teams. Editing a past/finalized session preserves its
+publication state and does not send new team notifications.
