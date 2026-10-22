@@ -640,7 +640,8 @@ textarea::placeholder, input::placeholder { color: #4E6459; }
   background: radial-gradient(circle at 42% 34%, #F8FBF9 0%, #E4EBE6 46%, #BFCBC3 74%, #93A69B 100%);
   box-shadow: 0 22px 46px rgba(0,0,0,.55), inset 0 -9px 20px rgba(0,0,0,.2), inset 0 5px 14px rgba(255,255,255,.85);
   display: flex; align-items: center; justify-content: center; position: relative;
-  transition: transform .34s cubic-bezier(.2,.8,.3,1);
+  scale: 1;
+  transition: scale .25s ease, transform .34s cubic-bezier(.2,.8,.3,1);
 }
 .disc-inner::before, .disc-inner::after {
   content: ""; position: absolute; border-radius: 50%; border: 1px solid rgba(28,71,52,.2);
@@ -653,10 +654,10 @@ textarea::placeholder, input::placeholder { color: #4E6459; }
   -webkit-mask: url("monogram.png") center / contain no-repeat;
   mask: url("monogram.png") center / contain no-repeat;
 }
-.fdisc:not([disabled]):hover .disc-inner { transform: scale(1.045) rotate(6deg); }
-.fdisc:not([disabled]):active .disc-inner { transform: scale(.965); }
+.fdisc:not([disabled]):not(.spinning):is(:hover, :focus-visible) .disc-inner { scale: 1.055; }
+.fdisc:not([disabled]):not(.spinning):active .disc-inner { scale: 1.02; }
 .fdisc.spinning { pointer-events: none; }
-.fdisc.spinning .disc-inner { animation: throw 1.9s cubic-bezier(.17,.72,.18,1) forwards; }
+.fdisc.spinning .disc-inner { scale: 1; animation: throw 1.9s cubic-bezier(.17,.72,.18,1) forwards; }
 @keyframes throw {
   0%   { transform: rotate(0deg) scale(1); }
   8%   { transform: rotate(70deg) scale(1.07); }
@@ -986,13 +987,13 @@ textarea::placeholder, input::placeholder { color: #4E6459; }
 .btn:hover,
   .card:hover, .step:hover, .panel:hover, .team:hover,
 .sess:hover, .photo:hover, .photo:hover img, .chip-o:hover,
-.cal-day:hover, .fdisc:not([disabled]):hover .disc-inner {
+.cal-day:hover {
   translate: none !important;
   rotate: none !important;
   scale: none !important;
 }
 .btn:hover::after { translate: none !important; }
-.cal-day:hover, .fdisc:not([disabled]):hover .disc-inner { transform: none !important; }
+.cal-day:hover { transform: none !important; }
 .is-scrolled .nav { box-shadow: 0 12px 30px rgba(0,0,0,.22); }
 
 /* Nobody is labelled by default. Tier markers and the per-team breakdown are
@@ -1822,4 +1823,15 @@ body.is-public .head.public-only { display: block; }
   .fris-off-school-admin { margin-top: 3px; }
   .fris-off-school-replace { min-width: 142px; padding: 6px 12px; font-size: 11px; }
   .fris-off-school-status { margin-top: 2px; font-size: 10px; }
+}
+
+/* Idle motion composes with hover scale and gives way to the throw. */
+@keyframes disc-idle {
+  0%, 100% { translate: 0 0; rotate: -2deg; }
+  50% { translate: 0 -9px; rotate: 2deg; }
+}
+.fdisc:not([disabled]):not(.spinning) .disc-inner { animation: disc-idle 4.6s ease-in-out infinite; }
+.fdisc[disabled] .disc-inner { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .fdisc .disc-inner { animation: none !important; }
 }
