@@ -149,7 +149,7 @@
           '<h1 class="display" style="transform-origin:center bottom">Frisbeing</h1>' +
           '<p class="hero-sub">Ultimate Frisbee Club</p>' +
         '</div>' +
-        '<p class="eyebrow">Tsinglan School &middot; Est. 2022</p>' +
+        '<p class="eyebrow">Tsinglan School</p>' +
         '<a class="btn solid hero-join"><span>JOIN</span></a>' +
         '<div class="learn-more"><span class="learn-arrow">↓</span><span>Learn more</span></div>' +
       '</div></section>';
@@ -327,7 +327,10 @@
     var selector = [
       ".head > *", ".cards > .card", ".steps-list > .step", ".sessions > .sess",
       ".photo", ".chips > .chip-o", ".panel", ".sorter", ".cal-top", ".cal-card",
-      ".day-panel", ".member-list", ".tonight > *", ".photo-band .over .inner > *"
+      ".day-panel", ".member-list", ".tonight > *", ".photo-band .over .inner > *",
+      ".about-copy > p", ".footer-invite h2", ".footer-invite-copy", ".footer-invite .btn",
+      ".footer-grid h3", ".footer-brand-link", ".footer-brand > p", ".footer-links > a",
+      ".footer-contact > p", ".footer-contact > a", ".footer-bottom > p"
     ].join(",");
     var seen = [];
     if (root.closest(".photo-band")) selector += ", :scope > *";
@@ -336,7 +339,7 @@
       seen.push(el);
       el.classList.add("motion-item");
       el.style.setProperty("--motion-order", Math.min(seen.length - 1, 9));
-      if (el.matches(".display, .cal-month")) el.classList.add("motion-title");
+      if (el.matches(".display, .cal-month, .footer-invite h2")) el.classList.add("motion-title");
       else if (el.matches(".eyebrow")) el.classList.add("motion-eyebrow");
       else if (el.matches(".card, .step, .panel, .sorter, .cal-card, .day-panel")) el.classList.add("motion-card");
       else if (el.matches(".photo")) el.classList.add("motion-photo", seen.length % 2 ? "motion-left" : "motion-right");
@@ -345,6 +348,13 @@
     });
   }
 
+  var footer = document.querySelector('.site-footer');
+  if (footer) {
+    footer.classList.add('reveal-on', 'motion-ready');
+    footer.querySelectorAll('.footer-invite, .footer-grid > *, .footer-bottom').forEach(function (group) {
+      group.classList.add('rv');
+    });
+  }
   var pending = Array.prototype.slice.call(document.querySelectorAll(".rv"));
   pending.forEach(prepareReveal);
   var ticking = false;
@@ -375,6 +385,9 @@
     document.body.classList.toggle("is-scrolled", y > 24);
     document.documentElement.style.setProperty("--scroll-kick", Math.max(-1, Math.min(1, (y - lastY) / 36)).toFixed(3));
     lastY = y;
+    // Move the repeating wallpaper at 22% of the document's scroll speed.
+    // Repositioning the repeat keeps the fixed layer covered at any depth.
+    document.documentElement.style.setProperty('--wallpaper-y', (-y * .22).toFixed(2) + 'px');
     driftPhotos();
     var trigger = window.innerHeight * 0.88;
     for (var i = pending.length - 1; i >= 0; i--) {

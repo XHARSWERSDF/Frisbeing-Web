@@ -1835,3 +1835,13 @@ body.is-public .head.public-only { display: block; }
 @media (prefers-reduced-motion: reduce) {
   .fdisc .disc-inner { animation: none !important; }
 }
+
+/* Reveal the rendered cover lockup without competing with its scroll fade. */
+@keyframes cover-lockup-in {
+  from { clip-path: inset(0 0 100% 0); translate: 0 18px; }
+  to { clip-path: inset(0); translate: 0 0; }
+}
+.brand-ready .scroll-brand { animation: cover-lockup-in .95s var(--ease-snap) backwards; }
+@media (prefers-reduced-motion: reduce) {
+  .brand-ready .scroll-brand { animation: none !important; }
+}
