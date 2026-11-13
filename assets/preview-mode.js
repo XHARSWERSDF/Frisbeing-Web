@@ -144,6 +144,7 @@
       var nextDate = dateAt(offset), closesAt = Date.parse(nextDate + 'T19:55:00+08:00');
       if (kind(nextDate) && closesAt > Date.now()) { v.nextSignup = { date: nextDate, closesAt: closesAt }; break; }
     }
+    v.accountFriendSignups = g.joined.filter(function(p) { return !p.temporaryPlayer && p.ownerEmail === (user() || {}).email; }).map(function(p) { return { id: p.id, name: p.name }; });
     v.friendSignups = g.joined.filter(function(p) { return p.temporaryPlayer && p.ownerEmail === (user() || {}).email; }).map(function(p) { return { id: p.id, name: p.name }; });
     if (manages) {
       v.preferredTeamsEnabled = !g.draw || g.draw.preferredTeamsEnabled !== false;
@@ -515,9 +516,10 @@
           if (friendView.me.rsvp !== "in") throw new Error("Join this session before signing up a friend.");
           if (method === "GET") return { friends: d.accounts.filter(function(a) { return a.email !== me.email && !isSuspended(a) && !g.joined.some(function(p) { return previewNorm(p.member || p.name) === previewNorm(a.member || a.name); }); }).map(function(a) { return { id: a.id, name: a.name }; }) };
           if (method === "DELETE") {
-            var guest = g.joined.find(function(p) { return p.id === body.id && p.temporaryPlayer && p.ownerEmail === me.email; });
-            if (!guest) throw new Error("You can only remove temporary players you added.");
+            var guest = g.joined.find(function(p) { return p.id === body.id && p.ownerEmail === me.email; });
+            if (!guest) throw new Error("You can only remove players you signed up.");
             g.joined = g.joined.filter(function(p) { return p.id !== body.id; });
+            if (!guest.temporaryPlayer) { var removed = Object.assign({}, guest); delete removed.ownerEmail; g.passed = g.passed.filter(function(p) { return p.id !== removed.id; }); g.passed.push(removed); }
           } else if (body.userId || Array.isArray(body.userIds)) {
             var ids = Array.from(new Set(Array.isArray(body.userIds) ? body.userIds : [body.userId]));
             var accounts = ids.map(function(id) { return d.accounts.find(function(a) { return a.id === id && a.email !== me.email; }); });
@@ -527,7 +529,7 @@
             accounts.forEach(function(account) {
               var entry = d.roster.find(function(p) { return previewNorm(p.name) === previewNorm(account.member); });
               g.passed = g.passed.filter(function(p) { return previewNorm(p.member || p.name) !== previewNorm(account.member || account.name); });
-              g.joined.push(Object.assign({}, entry, account, { id: "preview-" + account.id, tier: entry ? entry.tier : "U", position: FB.position(entry) }));
+              g.joined.push(Object.assign({}, entry, account, { id: "preview-" + account.id, ownerEmail: me.email, tier: entry ? entry.tier : "U", position: FB.position(entry) }));
             });
           } else {
             var name = typeof (body.fullName || body.name) === "string" ? (body.fullName || body.name).trim().replace(/\s+/g, " ") : "";
@@ -543,7 +545,7 @@
               if (g.joined.some(function(p) { return previewNorm(p.member || p.name) === previewNorm(account.member || account.name); })) throw new Error("This player has already joined.");
               var entry = d.roster.find(function(p) { return previewNorm(p.name) === previewNorm(account.member); });
               g.passed = g.passed.filter(function(p) { return previewNorm(p.member || p.name) !== previewNorm(account.member || account.name); });
-              g.joined.push(Object.assign({}, entry, account, { id: "preview-" + account.id, tier: entry ? entry.tier : "U", position: FB.position(entry) }));
+              g.joined.push(Object.assign({}, entry, account, { id: "preview-" + account.id, ownerEmail: me.email, tier: entry ? entry.tier : "U", position: FB.position(entry) }));
             } else {
               if (named.length) throw new Error("The name belongs to an existing account. Check the grade or choose the account from the list.");
               if (g.joined.some(function(p) { return previewNorm(p.name) === previewNorm(name) && (!p.grade || p.grade === grade); })) throw new Error("This player has already joined.");

@@ -1987,3 +1987,8 @@ button.passion-star-title:focus-visible { outline: 2px solid currentColor; outli
 @media (prefers-reduced-motion: reduce) {
   .brand-ready .scroll-brand { animation: none !important; }
 }
+
+.account-friend-signups { margin: 10px 0 0; padding-left: 20px; }
+.friend-signup .account-friend-signups li { margin: 0; line-height: 1.5; }
+.account-friend-signups li + li { margin-top: 6px; }
+.account-friend-signups .tn-link { margin: 0 0 0 6px; padding: 2px 4px; }

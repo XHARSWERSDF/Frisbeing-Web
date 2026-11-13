@@ -699,6 +699,7 @@ function gameView(date, who, today = clubDate()) {
   const managesClub = !!who && runsTheClub(who);
   const published = !!draw && draw.published !== false;
   view.me = { rsvp: (game && game.rsvps[who.user.id]) || null };
+  view.accountFriendSignups = game ? Object.entries(game.friendAccountOwners || {}).filter(([id, owner]) => owner === who.user.id && game.rsvps[id] === "in").map(([id]) => db.users.find(u => u.id === id)).filter(Boolean).map(u => ({ id: u.id, name: u.name || u.member })) : [];
   view.friendSignups = (game && game.guests || []).filter(g => g.ownerId === who.user.id).map(g => ({ id: g.id, name: g.name }));
   view.mine = null;
   view.drawn = published;
@@ -1565,10 +1566,16 @@ const server = http.createServer(async (req, res) => {
       if (tooMany("friends:" + who.user.id, 60, 10 * 60 * 1000)) return send(res, 429, { error: "Please wait before adding more friends." });
       const body = await readBody(req);
       game.guests = game.guests || [];
+      game.friendAccountOwners = game.friendAccountOwners || {};
       if (req.method === "DELETE") {
-        const guest = game.guests.find(g => g.id === body.id);
-        if (!guest || guest.ownerId !== who.user.id) return send(res, 403, { error: "You can only remove temporary players you added." });
-        game.guests = game.guests.filter(g => g.id !== body.id);
+        if (game.friendAccountOwners[body.id] === who.user.id && game.rsvps[body.id] === "in") {
+          game.rsvps[body.id] = "out";
+          delete game.friendAccountOwners[body.id];
+        } else {
+          const guest = game.guests.find(g => g.id === body.id);
+          if (!guest || guest.ownerId !== who.user.id) return send(res, 403, { error: "You can only remove players you signed up." });
+          game.guests = game.guests.filter(g => g.id !== body.id);
+        }
       } else if (body.userId || Array.isArray(body.userIds)) {
         const ids = [...new Set(Array.isArray(body.userIds) ? body.userIds : [body.userId])];
         if (!ids.length) return send(res, 400, { error: "Choose friends' accounts." });
@@ -1576,7 +1583,7 @@ const server = http.createServer(async (req, res) => {
         if (selected.some(u => !u)) return send(res, 400, { error: "Choose friends' accounts." });
         if (selected.some(gameSuspended)) return send(res, 403, { error: "A selected account is suspended from games." });
         if (selected.some(u => game.rsvps[u.id] === "in")) return send(res, 409, { error: "A selected friend has already joined. Refresh the list." });
-        for (const friend of selected) game.rsvps[friend.id] = "in";
+        for (const friend of selected) { game.rsvps[friend.id] = "in"; game.friendAccountOwners[friend.id] = who.user.id; }
       } else {
         const name = typeof (body.fullName || body.name) === "string" ? (body.fullName || body.name).trim().replace(/\s+/g, " ") : "";
         const grade = signupGrade(body.grade);
@@ -1590,6 +1597,7 @@ const server = http.createServer(async (req, res) => {
           if (gameSuspended(friend)) return send(res, 403, { error: "This account is suspended from games." });
           if (game.rsvps[friend.id] === "in") return send(res, 409, { error: "This player has already joined." });
           game.rsvps[friend.id] = "in";
+          game.friendAccountOwners[friend.id] = who.user.id;
         } else {
           if (sameName.length) return send(res, 409, { error: "The name belongs to an existing account. Check the grade or choose the account from the list." });
           if (game.guests.some(g => FB.norm(g.name) === FB.norm(name) && (!g.grade || g.grade === grade))) return send(res, 409, { error: "This player has already joined." });
@@ -1630,6 +1638,7 @@ const server = http.createServer(async (req, res) => {
       const game = gameFor(date);
       if (game.rsvps[who.user.id] === body.status) return send(res, 200, gameView(date, who));
       game.rsvps[who.user.id] = body.status;
+      if (game.friendAccountOwners) delete game.friendAccountOwners[who.user.id];
       if (game.draw) {
         const refreshed = FB.refreshDrawAttendance(game.draw.teams, joinedPlayers(game));
         game.draw.teams = refreshed.teams;

@@ -451,5 +451,32 @@ test('preview no-account form matches full name and grade to an existing account
   const joined=await api(0,'POST',`/game/${today}/friends`,{fullName:'Demo Friend',grade:'11'});
   assert.ok(joined.participants.some(p=>p.name==='Demo Friend'));
   assert.equal(joined.friendSignups.length,0);
+  assert.equal(joined.accountFriendSignups.length,1);
+  const removed = await api(0,'DELETE',`/game/${today}/friends`,{id:joined.accountFriendSignups[0].id});
+  assert.equal(removed.accountFriendSignups.length,0);
+  assert.ok(!removed.participants.some(p=>p.name==='Demo Friend'));
   await assert.rejects(api(0,'POST',`/game/${today}/friends`,{fullName:'Guest Without Grade'}),/grade/);
+});
+
+
+test('account sponsors can list and remove their own signups without controlling independently rejoined accounts', async t => {
+  const date = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(Date.now()+86400000));
+  const f = await serverFixture(t, data => { data.schedule = {weekdays:[],since:date,added:[date],removed:[]}; });
+  const route = `/game/${date}`;
+  await f.api(0,'PUT',route+'/rsvp',{status:'in'});
+  await f.api(2,'PUT',route+'/rsvp',{status:'in'});
+  let view = await f.api(0,'POST',route+'/friends',{userIds:[f.users[1].id,f.users[3].id]});
+  assert.equal(view.accountFriendSignups.length,2);
+  assert.equal(view.friendSignups.length,0);
+  await f.api(2,'DELETE',route+'/friends',{id:f.users[1].id},403);
+  view = await f.api(0,'DELETE',route+'/friends',{id:f.users[1].id});
+  assert.equal(view.accountFriendSignups.length,1);
+  assert.equal((await f.api(1,'GET',`/game?date=${date}`)).me.rsvp,'out');
+  await f.api(0,'PUT',route+'/rsvp',{status:'out'});
+  assert.equal((await f.api(3,'GET',`/game?date=${date}`)).me.rsvp,'in','sponsor leaving retains friends');
+  await f.api(0,'PUT',route+'/rsvp',{status:'in'});
+  await f.api(3,'PUT',route+'/rsvp',{status:'out'});
+  await f.api(3,'PUT',route+'/rsvp',{status:'in'});
+  await f.api(0,'DELETE',route+'/friends',{id:f.users[3].id},403);
+  assert.equal((await f.api(0,'GET',`/game?date=${date}`)).accountFriendSignups.length,0);
 });
