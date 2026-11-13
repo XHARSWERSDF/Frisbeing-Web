@@ -49,14 +49,43 @@
   supermanDialog.querySelector("h2").id = "passionSupermanDialogTitle";
   supermanDialog.querySelector("h2").textContent = "Fris之星";
   supermanDialog.querySelector(".passion-star-kicker").textContent = "FRISBEING UF · MEMBER HONOUR";
-  supermanDialog.querySelector(".passion-star-copy").textContent = "你是出勤榜前三！！";
+  supermanDialog.querySelector(".passion-star-copy").textContent = "你是参与率榜前三！";
   supermanDialog.querySelector(".passion-star-emblem").innerHTML = '<svg viewBox="0 0 120 120" role="presentation"><path d="M20 35 38 49 60 16 82 49 100 35 90 87 30 87Z"/><circle cx="60" cy="60" r="47"/></svg>';
   document.body.appendChild(supermanDialog);
   supermanDialog.querySelector(".passion-star-close").addEventListener("click", function () { supermanDialog.close(); });
   supermanDialog.addEventListener("click", function (event) { if (event.target === supermanDialog) supermanDialog.close(); });
+  var passionUltraState = null, ultraOpening = false;
+  var ultraDialog = el("passionStarDialog").cloneNode(true);
+  ultraDialog.id = "passionUltraDialog";
+  ultraDialog.classList.add("ultra-award-dialog");
+  ultraDialog.setAttribute("aria-labelledby", "passionUltraDialogTitle");
+  ultraDialog.querySelector(".passion-star-close").id = "passionUltraClose";
+  ultraDialog.querySelector("h2").id = "passionUltraDialogTitle";
+  ultraDialog.querySelector("h2").textContent = "超级激情之星";
+  ultraDialog.querySelector(".passion-star-kicker").textContent = "FRISBEING UF / EXCEPTIONAL COMMITMENT";
+  ultraDialog.querySelector(".passion-star-copy").textContent = "20+ sessions. One extraordinary commitment.";
+  ultraDialog.querySelector(".passion-star-emblem").innerHTML = '<svg viewBox="0 0 120 120" role="presentation"><path d="M60 3 70 39 94 26 81 50 117 60 81 70 94 94 70 81 60 117 50 81 26 94 39 70 3 60 39 50 26 26 50 39Z"/><path class="ultra-star-core" d="M60 31 67 53 89 60 67 67 60 89 53 67 31 60 53 53Z"/><circle cx="60" cy="60" r="48"/></svg>';
+  ultraDialog.querySelector(".passion-star-sky").insertAdjacentHTML("afterbegin", '<div class="ultra-halo" aria-hidden="true"></div><div class="ultra-horizon" aria-hidden="true"></div><div class="ultra-sparks" aria-hidden="true">' + Array.from({ length: 18 }, function(_, i) { return '<i style="--i:' + i + '"></i>'; }).join('') + '</div>');
+  document.body.appendChild(ultraDialog);
+  ultraDialog.querySelector(".passion-star-close").addEventListener("click", function() { ultraDialog.close(); });
+  ultraDialog.addEventListener("click", function(e) { if (e.target === ultraDialog) ultraDialog.close(); });
+  ultraDialog.addEventListener("close", autoShowSuperman);
+  el("passionStarDialog").addEventListener("close", autoShowUltra);
+  el("passionUltraTitle").addEventListener("click", function() { replayAward(passionUltraState, ultraDialog); });
+  function autoShowUltra() {
+    if ((passionStarState && passionStarState.unseen && pendingAwards && pendingAwards.indexOf("star") >= 0) || !pendingAwards || pendingAwards.indexOf("ultra") < 0 || !passionUltraState || !passionUltraState.unseen || ultraOpening || document.querySelector("dialog[open]")) return;
+    ultraOpening = true;
+    preferredRequest("POST", "/me/passion-ultra/seen", {}).then(function(result) {
+      if (!passionUltraState || !passionUltraState.unlocked) return;
+      pendingAwards = pendingAwards.filter(function(award) { return award !== "ultra"; });
+      passionUltraState.unseen = false;
+      if (window.FBNav && FBNav.updateUltraStatus) FBNav.updateUltraStatus(false);
+      if (!result.alreadySeen) ultraDialog.showModal();
+    }).catch(function(error) { showPreferredActionStatus(error.message); }).finally(function() { ultraOpening = false; });
+  }
   function autoShowSuperman() {
     if (!pendingAwards || pendingAwards.indexOf("superman") < 0) return;
-    if (!passionSupermanState || !passionSupermanState.unseen || supermanOpening || (passionStarState && passionStarState.unseen) || document.querySelector("dialog[open]")) return;
+    if ((passionUltraState && passionUltraState.unseen && pendingAwards.indexOf("ultra") >= 0) || !passionSupermanState || !passionSupermanState.unseen || supermanOpening || (passionStarState && passionStarState.unseen) || document.querySelector("dialog[open]")) return;
     supermanOpening = true;
     preferredRequest("POST", "/me/passion-superman/seen", {}).then(function (result) {
       if (!passionSupermanState || !passionSupermanState.unlocked) return;
@@ -68,6 +97,17 @@
       .finally(function () { supermanOpening = false; });
   }
   el("passionStarDialog").addEventListener("close", autoShowSuperman);
+
+  function replayAward(state, dialog) {
+    if (!currentUser() || !state || !state.unlocked || document.querySelector("dialog[open]")) return;
+    dialog.showModal();
+    if (dialog.getAnimations) dialog.getAnimations({ subtree: true }).forEach(function(animation) {
+      animation.cancel(); animation.play();
+    });
+  }
+  el("passionStarTitle").addEventListener("click", function() { replayAward(passionStarState, el("passionStarDialog")); });
+  el("passionSupermanTitle").addEventListener("click", function() { replayAward(passionSupermanState, supermanDialog); });
+
 
   function preferredRequest(method, path, body) {
     if (window.FBPreview && FBPreview.active()) return FBPreview.request(method, path, body);
@@ -146,7 +186,7 @@
 
   function loadTeammateProfile() {
     var request = ++profileRequest;
-    if (!currentUser()) { el("teammateArea").hidden = true; passionSupermanState = null; el("passionSupermanTitle").hidden = true; if (supermanDialog.open) supermanDialog.close(); return; }
+    if (!currentUser()) { el("teammateArea").hidden = true; passionUltraState = null; el("passionUltraTitle").hidden = true; if (ultraDialog.open) ultraDialog.close(); passionSupermanState = null; el("passionSupermanTitle").hidden = true; if (supermanDialog.open) supermanDialog.close(); return; }
     el("teammateArea").hidden = false;
     el("teammateStatus").textContent = "Loading teammate info…";
     return preferredRequest("GET", "/me").then(function (data) {
@@ -189,16 +229,24 @@
       if (!passionSupermanState.unlocked && supermanDialog.open) supermanDialog.close();
       if (window.FBNav && FBNav.updateSupermanStatus) FBNav.updateSupermanStatus(passionSupermanState.unseen);
     }
+    passionUltraState = data.passionUltra || { unlocked: false, unseen: false };
+    el("passionUltraTitle").hidden = !passionUltraState.unlocked;
+    if (!passionUltraState.unlocked && ultraDialog.open) ultraDialog.close();
+    if (window.FBNav && FBNav.updateUltraStatus) FBNav.updateUltraStatus(passionUltraState.unseen);
     passionStarState = data.passionStar || { unlocked: false, unseen: false };
     if (pendingAwards === null) {
       pendingAwards = [];
       if (passionStarState.unseen) pendingAwards.push("star");
+      if (passionUltraState.unseen) pendingAwards.push("ultra");
       if (passionSupermanState && passionSupermanState.unseen) pendingAwards.push("superman");
     }
     if (data.account && typeof data.account.attendanceCount === "number") {
       el("attendanceCount").textContent = String(data.account.attendanceCount);
     }
+    var frequency = data.account && data.account.attendanceFrequency;
+    el("attendanceFrequency").textContent = frequency ? frequency.joined + "/" + frequency.total : "";
     el("passionStarTitle").hidden = !passionStarState.unlocked;
+    if (!passionStarState.unlocked && el("passionStarDialog").open) el("passionStarDialog").close();
     if (window.FBNav && FBNav.updatePassionStarStatus) FBNav.updatePassionStarStatus(passionStarState.unseen);
     teammateGroupState = group;
     var memberList = el("preferredTeamMembers");
@@ -214,6 +262,7 @@
     el("preferredOpen").disabled = !!group && (!group.isLeader || group.members.length >= 3);
     el("teammateStatus").textContent = "";
     autoShowPassionStar();
+    autoShowUltra();
     autoShowSuperman();
 
     if (group) {
@@ -275,6 +324,23 @@
               .catch(function (error) { el("teammateStatus").textContent = error.message; });
           });
           item.appendChild(dismiss);
+        }
+        if (invitation.kind !== "declined") {
+          var cancel = document.createElement("button");
+          cancel.type = "button";
+          cancel.className = "btn teammate-dismiss";
+          cancel.textContent = "Cancel invitation";
+          cancel.setAttribute("aria-label", "Cancel invitation to " + invitation.memberName);
+          cancel.addEventListener("click", function () {
+            cancel.disabled = true;
+            preferredRequest("POST", "/me/teammate-invitations/" + encodeURIComponent(invitation.id) + "/cancel", {})
+              .then(loadTeammateProfile)
+              .catch(function (error) {
+                cancel.disabled = false;
+                el("teammateStatus").textContent = error.message;
+              });
+          });
+          item.appendChild(cancel);
         }
         sentBox.appendChild(item);
       });

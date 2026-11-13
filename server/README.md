@@ -225,7 +225,7 @@ called off.
 | `GET /schedule?month=2026-09` | anyone | — | `{ month, today, sessions: [{ date, kind, drawn, joined? }] }` — `kind` is `regular` or `extra`; `joined` counts only go to leaders and admins |
 | `POST /schedule` | leaders, admins | `{ "date", "action": "add" \| "remove" }` | `{ date, kind }`. Past days are refused. Removing a day deletes its answers and teams |
 | `GET /game?date=…` | anyone | — | That day as the asker may see it (defaults to today). Everyone: `{ date, today, isGame, kind, canJoin, participants: [{ name }] }`. Without a `date` query, also includes `upcoming`, tomorrow’s view. Signed in, also: `me.rsvp`, `drawn`, and `mine: { letter, members: [names] }` once teams are out. Leaders and admins, also: `joined` (with tier and gender), `passed`, and every team in `teams` |
-| `PUT /game/:date/rsvp` | signed in | `{ "status": "in" \| "out" }` | the updated view. Available on the session day and the previous calendar day in `CLUB_TZ`; tonight's answers close at 20:10. Each date has its own answer. Updates the attendance list. Automatically inserts new attendees and removes departures, preserving existing assignments and marking late arrivals. Repeating the same answer is a no-op |
+| `PUT /game/:date/rsvp` | signed in | `{ "status": "in" \| "out" }` | the updated view. Available on the session day and the previous calendar day in `CLUB_TZ`; tonight's answers close at 19:55. Each date has its own answer. Updates the attendance list. Automatically inserts new attendees and removes departures, preserving existing assignments and marking late arrivals. Repeating the same answer is a no-op |
 | `POST /game/:date/draw` | leaders, admins | `{ "n": 3 }` | the updated view, plus `notifying`: how many devices are being told |
 | `DELETE /game/:date/draw` | leaders, admins | — | takes the teams back and reopens answers |
 | `PUT /game/:date/assignment` | leaders, admins | `{ "id": "player-id", "team": 0, "position": "h" }` (team or position may be omitted) | updated view. Moves the player and their attending registered teammates to an existing zero-based team and/or changes their session position; `409` if no draw exists. Admins may override size/Index limits; registered teammates move together. Rejected moves do not change saved assignments |
@@ -249,7 +249,7 @@ differences. Handle/Cutter distribution breaks ties. Gender is ignored.
 Registered teammates remain indivisible. A bounded search returns the best
 valid allocation found, or an error without overwriting the previous draw.
 
-Until 20:10, members may change their answers even after teams are published.
+Until 19:55, members may change their answers even after teams are published.
 Late arrivals are automatically placed by tier, Index and headcount; existing
 assignments stay in place. Departures are removed immediately. These attendance
 updates do not demand a redraw even if a hard draw limit becomes impossible.
@@ -336,3 +336,17 @@ Completed sessions retain their attendance snapshots and team assignments
 without an age-based purge. Admins can select an earlier date in Game and drag
 members between the saved teams. Editing a past/finalized session preserves its
 publication state and does not send new team notifications.
+
+Signed-in members who have joined can use `GET /game/:date/friends` for available account names and IDs, then `POST` with `{ userId }` to sign up that account or `{ fullName, grade }` for a temporary T3 Cutter. Temporary guests belong only to this session; the creator may remove them with `DELETE` and `{ id }`. Existing accounts keep their roster tier, teammate group, attendance credit, and ability to change their own RSVP. These routes use the normal signup window.
+
+Each member may have at most two temporary guests per session. Removing one frees a slot. Signing up existing accounts has no headcount cap.
+
+`POST /game/:date/friends` also accepts `{ userIds: [...] }` for an unlimited account selection; validation runs for the whole selection before any RSVP changes.
+
+Admin and Admin Manager accounts can use `PUT /game-suspension` with `{ name, suspended: true | false }` for linked Member accounts. `GET /roster-attendance` includes `canSuspend` and `gameSuspended`. Suspended Members retain their other account functions but cannot RSVP, sign up friends, or be signed up by another account; eligible account lists exclude them. Suspension removes their active and future signups while preserving friends they previously signed up. Historical finalized attendance is retained. `/me` includes the flag so the Game navigation can be hidden.
+
+Passion Star eligibility is re-evaluated on `/me`: at least 8 cumulative attended sessions or a current streak of 6 consecutive completed scheduled sessions. Ineligible legacy honours are revoked, including their seen flags. Super Passion Star (`passionUltra`) requires at least 20 attended sessions. `POST /me/passion-ultra/seen` acknowledges its profile notification and is idempotent. Both honours are replayable from the profile badge without modifying attendance or seen state. Fris Star uses the top three participation frequencies, with the existing weekly notification reset.
+
+Participation frequency is `joined / total`: completed, non-cancelled scheduled sessions from the account creation date, inclusive, through the latest completed session (21:00 club time). Joined days come from per-session finalized RSVP history; future signups, walk-in counters and imported cumulative attendance do not inflate the ratio. Extra sessions count. Accounts without creation metadata use the calendar tracking start. `/me.account.attendanceFrequency` and each linked `/roster-attendance` member expose `{ joined, total, rate }`. Fris Star uses competition ranks by exact rate (1, 1, 3), and every account tied in the top three places qualifies. Names only provide a stable display order; accounts with zero attended sessions do not qualify.
+
+No-account signup requires Grade and Full name. Grades accept 11, G11 or Grade 11. An exact normalized name and grade match signs up the existing account, preserving its tier and suspension rules without consuming a temporary guest slot. Ambiguous matches or existing names with a different or missing grade must use the account picker. Unmatched players use a temporary T3 slot.

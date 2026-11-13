@@ -3,12 +3,12 @@
    The sorter has to work on a field with no signal, so the whole app shell is
    cached on install and served cache-first. Bump CACHE to ship an update.
    ========================================================================== */
-const CACHE = "frisbeing-v270";
+const CACHE = "frisbeing-v319";
 
 const SHELL = [
   "./",
   "./index.html",
-  "./assets/attendance-awards.js?v=1",
+  "./assets/attendance-awards.js?v=5",
   "./assets/home-footer.css?v=3",
   "./assets/photos/next-game.jpg",
   "./sort.html",
@@ -19,25 +19,25 @@ const SHELL = [
   "./manifest.json",
   "./roster.json",
   "./assets/brand.css",
-  "./assets/brand.css?v=196",          /* pages ask for these by version */
+  "./assets/brand.css?v=228",          /* pages ask for these by version */
   "./assets/engine.js",
   "./assets/engine.js?v=83",
   "./assets/store.js",
   "./assets/store.js?v=91",
   "./assets/server-config.js",
-  "./assets/motion.js?v=104",
-  "./assets/sort.js?v=127",
+  "./assets/motion.js?v=105",
+  "./assets/sort.js?v=151",
   "./assets/roster.js",
-  "./assets/roster.js?v=91",
+  "./assets/roster.js?v=95",
   "./admin.html",
   "./assets/auth-config.js",
   "./assets/auth.js?v=3",
   "./assets/teammate-rules.js?v=2",
-  "./assets/preview-mode.js?v=39",
+  "./assets/preview-mode.js?v=50",
   "./assets/admin.js",
-  "./assets/admin.js?v=129",
-  "./assets/navigation.js?v=23",
-  "./assets/community.css?v=16",
+  "./assets/admin.js?v=135",
+  "./assets/navigation.js?v=30",
+  "./assets/community.css?v=17",
   "./assets/photo-booth.js?v=3",
   "./assets/frisbeing-damask.png",
   "./assets/fris-off-school.js?v=2",

@@ -137,6 +137,7 @@ function previewFixture(seed, withEngine = true, sharedStorage) {
   const roles = ['player', 'admin', 'leader'];
   const api = async (i, method, route, body) => { storage.set('frisbeing.ui-preview.role', roles[i]); return context.FBPreview.request(method, route, body); };
   api.storage = storage;
+  api.preview = context.FBPreview;
   api.storageChanged = () => events.storage({ key: 'frisbeing.ui-preview.data.v1' });
   return api;
 }
@@ -179,6 +180,17 @@ test('server draw attaches only attending teammates and persists their Fris Inde
   assert.ok(moved.teams[1 - source].some(p => p.id === f.users[1].id));
   assert.ok(moved.teams[1 - source].some(p => p.id === f.users[2].id), 'attending teammate moves with them');
   assert.equal(moved.drawn, false);
+  await f.api(1, 'POST', `/game/${today}/draw`, { n: 2, preferredTeamsEnabled: false }, 403);
+  const independent = await f.api(0, 'POST', `/game/${today}/draw`, { n: 2, preferredTeamsEnabled: false });
+  assert.equal(independent.preferredTeamsEnabled, false);
+  assert.ok(independent.teams.flat().every(p => !p.teammateGroupId));
+  assert.equal(FB.drawError(independent.teams), null);
+  assert.equal(f.saved().games[today].draw.preferredTeamsEnabled, false);
+  const refreshed = await f.api(0, 'GET', `/game?date=${today}`);
+  assert.ok(refreshed.teams.flat().every(p => !p.teammateGroupId));
+  const restored = await f.api(0, 'POST', `/game/${today}/draw`, { n: 2, preferredTeamsEnabled: true });
+  assert.equal(restored.preferredTeamsEnabled, true);
+  assert.ok(restored.teams.some(team => [1, 2].every(i => team.some(p => p.id === f.users[i].id))));
 });
 
 test('preview draw uses registered teammates and allows unrestricted private draft moves', async () => {
@@ -266,4 +278,178 @@ test('preview feedback can be submitted by members and read only by managers', a
     assert.equal(inbox.feedback[0].message, 'More club sessions please.');
     assert.deepEqual(Object.keys(inbox.feedback[0]).sort(), ['createdAt', 'id', 'message']);
   }
+});
+
+test('preview sender can cancel a pending invitation and invite someone else', async () => {
+  const api = previewFixture(undefined, false);
+  await api(0, 'PUT', '/me/preferences', { preferredTeammates: ['Demo Jamie'] });
+  const invitation = (await api(1, 'GET', '/me')).teammateInvitations[0];
+  const route = `/me/teammate-invitations/${invitation.id}/cancel`;
+  await assert.rejects(api(1, 'POST', route, {}), /no longer pending/);
+  await api(0, 'POST', route, {});
+  assert.equal((await api(0, 'GET', '/me')).teammateInvitationsSent.length, 0);
+  assert.equal((await api(0, 'GET', '/me')).account.preferredTeammates.length, 0);
+  assert.equal((await api(1, 'GET', '/me')).teammateInvitations.length, 0);
+  await assert.rejects(api(1, 'POST', `/me/teammate-invitations/${invitation.id}/respond`, { response: 'accept', expectedKind: invitation.kind }));
+  await api(0, 'PUT', '/me/preferences', { preferredTeammates: ['Demo Taylor'] });
+  assert.equal((await api(2, 'GET', '/me')).teammateInvitations.length, 1);
+});
+
+test('server cancellation is sender-only and prevents later acceptance', async t => {
+  const f = await serverFixture(t);
+  await f.invite(0, 1);
+  const invitation = (await f.me(1)).teammateInvitations[0];
+  const route = `/me/teammate-invitations/${invitation.id}/cancel`;
+  await f.api(1, 'POST', route, {}, 404);
+  await f.api(0, 'POST', route, {});
+  assert.equal((await f.me(0)).teammateInvitationsSent.length, 0);
+  assert.equal((await f.me(0)).account.preferredTeammates.length, 0);
+  assert.equal((await f.me(1)).teammateInvitations.length, 0);
+  await f.respond(1, invitation, 'accept', 404);
+  await f.invite(0, 2);
+  const next = (await f.me(2)).teammateInvitations[0];
+  await f.respond(2, next);
+  await f.api(0, 'POST', `/me/teammate-invitations/${next.id}/cancel`, {}, 404);
+  assert.equal((await f.me(0)).teammateGroup.members.length, 2);
+});
+
+
+test('all preview roles can sign up friends; sponsor leaving preserves friends and temporary slots are capped', async () => {
+  for (const role of [0, 1, 2]) {
+    const api = previewFixture();
+    await api(role, 'GET', '/game');
+    api.preview.simulateFriends();
+    api.preview.setSessionTime('before');
+    const today = (await api(role, 'GET', '/game')).date;
+    const route = `/game/${today}`;
+    const choices = await api(role, 'GET', route + '/friends');
+    const account = choices.friends.find(p => p.name === 'Demo Friend');
+    assert.ok(account);
+    await api(role, 'POST', route + '/friends', { userId: account.id });
+    let view = await api(role, 'POST', route + '/friends', { name: 'Temporary One' , grade: 'G11' });
+    assert.ok(view.participants.some(p => p.name === 'Temporary One'));
+    await api(role, 'POST', route + '/friends', { name: 'Temporary Two' , grade: 'G11' });
+    await assert.rejects(api(role, 'POST', route + '/friends', { name: 'Temporary Three' , grade: 'G11' }), /at most two/);
+    view = await api(role, 'PUT', route + '/rsvp', { status: 'out' });
+    assert.equal(view.me.rsvp, 'out');
+    for (const name of ['Temporary One', 'Temporary Two', 'Demo Friend']) assert.ok(view.participants.some(p => p.name === name));
+    await api(role, 'PUT', route + '/rsvp', { status: 'in' });
+    view = await api(role, 'DELETE', route + '/friends', { id: view.friendSignups[0].id });
+    assert.equal(view.friendSignups.length, 1);
+    await api(role, 'POST', route + '/friends', { name: 'Replacement' , grade: 'G11' });
+    api.preview.setSessionTime('after');
+    await assert.rejects(api(role, 'POST', route + '/friends', { name: 'Closed' , grade: 'G11' }), /closed/);
+  }
+});
+
+
+test('suspended preview members keep account access but cannot join or be signed up in a batch', async () => {
+  const api = previewFixture();
+  api.preview.simulateFriends(); api.preview.setSessionTime('before');
+  const today = (await api(1, 'GET', '/game')).date;
+  await api(1, 'PUT', '/game-suspension', { name: 'Demo Alex', suspended: true });
+  assert.equal((await api(0, 'GET', '/me')).account.gameSuspended, true);
+  assert.equal((await api(0, 'GET', '/game')).canJoin, false);
+  await assert.rejects(api(0, 'PUT', `/game/${today}/rsvp`, { status: 'in' }), /unavailable/);
+  await api(1, 'PUT', `/game/${today}/rsvp`, { status: 'in' });
+  assert.ok(!(await api(1, 'GET', `/game/${today}/friends`)).friends.some(p => p.id === 'player'));
+  await assert.rejects(api(1, 'POST', `/game/${today}/friends`, { userIds: ['friend-demo', 'player'] }), /suspended/);
+  assert.ok(!(await api(1, 'GET', '/game')).participants.some(p => p.name === 'Demo Friend'));
+  await api(1, 'PUT', '/game-suspension', { name: 'Demo Alex', suspended: false });
+  await api(1, 'POST', `/game/${today}/friends`, { userIds: ['friend-demo', 'player'] });
+  assert.equal((await api(0, 'GET', '/game')).me.rsvp, 'in');
+  await assert.rejects(api(0, 'PUT', '/game-suspension', { name: 'Demo Alex', suspended: true }), /Admin/);
+  await assert.rejects(api(1, 'PUT', '/game-suspension', { name: 'Demo Jamie', suspended: true }), /Member/);
+});
+
+test('personal award APIs revoke legacy stars and unlock ultra at 20 sessions', async t => {
+  const f = await serverFixture(t, data => {
+    [5,8,19,20].forEach((count,i) => { data.users[i].attendanceCount = count; });
+    data.users[0].passionStarUnlockedAt = 100;
+    data.users[0].passionStarSeenAt = 101;
+  });
+  assert.equal((await f.me(0)).passionStar.unlocked,false);
+  assert.equal(f.saved().users[0].passionStarUnlockedAt,undefined);
+  assert.equal((await f.me(1)).passionStar.unlocked,true);
+  assert.equal((await f.me(2)).passionUltra.unlocked,false);
+  await f.api(2,'POST','/me/passion-ultra/seen',{},409);
+  assert.equal((await f.me(3)).passionUltra.unseen,true);
+  assert.equal((await f.api(3,'POST','/me/passion-ultra/seen',{})).alreadySeen,false);
+  assert.equal((await f.me(3)).passionUltra.unseen,false);
+  assert.equal((await f.api(3,'POST','/me/passion-ultra/seen',{})).alreadySeen,true);
+});
+
+test('ultra preview uses the shared thresholds and preserves seen state', async () => {
+  const api=previewFixture();
+  api.preview.simulateUltra();
+  assert.equal((await api(0,'GET','/me')).passionUltra.unlocked,true);
+  assert.equal((await api(0,'POST','/me/passion-ultra/seen',{})).alreadySeen,false);
+  assert.equal((await api(0,'GET','/me')).passionUltra.unseen,false);
+});
+
+test('API attendance ratios and Fris Star ranking use session history since each account creation', async t => {
+  const today = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  const dateAt = offset => { const date=new Date(today+'T12:00:00Z'); date.setUTCDate(date.getUTCDate()+offset); return date.toISOString().slice(0,10); };
+  const days=[-4,-3,-2,-1].map(dateAt);
+  const f=await serverFixture(t,data=>{
+    data.users.forEach(u=>{u.createdAt=Date.parse(dateAt(-5)+'T00:00:00+08:00');});
+    data.users[0].attendanceCount=100;
+    data.users[1].attendanceCount=2;
+    data.users[1].createdAt=Date.parse(dateAt(-2)+'T00:00:00+08:00');
+    data.users[5].email='justin.he_27@tsinglan.org';
+    data.schedule={weekdays:[],added:days.concat(dateAt(1)),removed:[],since:dateAt(-5)};
+    data.games=Object.fromEntries(days.map((date,i)=>{
+      const ids=[]; if(i!==1)ids.push(data.users[0].id);if(i>=2)ids.push(data.users[1].id);
+      return [date,{rsvps:Object.fromEntries(ids.map(id=>[id,'in'])),attendance:ids,attendanceSnapshot:[],attendanceFinalizedAt:Date.now()}];
+    }));
+  });
+  const old=await f.me(0), newcomer=await f.me(1);
+  assert.deepEqual(old.account.attendanceFrequency,{joined:3,total:4,rate:.75});
+  assert.deepEqual(newcomer.account.attendanceFrequency,{joined:2,total:2,rate:1});
+  assert.equal(newcomer.passionSuperman.rank,1);assert.equal(old.passionSuperman.rank,2);
+  const roster=await f.api(5,'GET','/roster-attendance');
+  assert.deepEqual(roster.members.find(m=>m.name===f.users[1].member).attendanceFrequency,newcomer.account.attendanceFrequency);
+});
+
+test('Fris Star previews can gain, lose and regain an award with tied frequency ranks', async () => {
+  const api=previewFixture();
+  api.preview.simulateSuperman(false);
+  assert.equal((await api(0,'GET','/me')).passionSuperman.unlocked,true);
+  api.preview.simulateSuperman(true);
+  assert.equal((await api(0,'GET','/me')).passionSuperman.unlocked,false);
+  api.preview.simulateSuperman(false);
+  assert.equal((await api(0,'GET','/me')).passionSuperman.unlocked,true);
+});
+
+test('grade and full name auto-join matching accounts and keep temporary guest limits and suspension enforcement', async t => {
+  const tomorrow=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(Date.now()+86400000));
+  const f=await serverFixture(t,data=>{
+    data.schedule={weekdays:[],since:tomorrow,added:[tomorrow],removed:[]};
+    data.users[1].grade='G11';data.users[1].fullName='Test B';
+    data.users[2].grade='G12';data.users[2].gameSuspended=true;
+  });
+  const route=`/game/${tomorrow}`;
+  await f.api(0,'PUT',route+'/rsvp',{status:'in'});
+  await f.api(0,'POST',route+'/friends',{fullName:'Unknown Person'},400);
+  await f.api(0,'POST',route+'/friends',{fullName:'Unknown Person',grade:'G13'},400);
+  await f.api(0,'POST',route+'/friends',{fullName:'Test B',grade:'G10'},409);
+  await f.api(0,'POST',route+'/friends',{fullName:'Guest One',grade:'G11'});
+  await f.api(0,'POST',route+'/friends',{fullName:'Guest Two',grade:'G12'});
+  await f.api(0,'POST',route+'/friends',{fullName:'Guest Three',grade:'G11'},400);
+  const matched=await f.api(0,'POST',route+'/friends',{fullName:' test  b ',grade:'Grade 11'});
+  assert.equal(matched.friendSignups.length,2,'matching account does not use a temporary slot');
+  assert.equal((await f.api(1,'GET',`/game?date=${tomorrow}`)).me.rsvp,'in');
+  assert.equal(f.saved().games[tomorrow].guests.length,2);
+  assert.equal(f.saved().games[tomorrow].guests[0].grade,'G11');
+  await f.api(0,'POST',route+'/friends',{fullName:'Test B',grade:'11'},409);
+  await f.api(0,'POST',route+'/friends',{fullName:'Test C',grade:'G12'},403);
+});
+
+test('preview no-account form matches full name and grade to an existing account', async () => {
+  const api=previewFixture();api.preview.simulateFriends();api.preview.setSessionTime('before');
+  const today=(await api(0,'GET','/game')).date;
+  const joined=await api(0,'POST',`/game/${today}/friends`,{fullName:'Demo Friend',grade:'11'});
+  assert.ok(joined.participants.some(p=>p.name==='Demo Friend'));
+  assert.equal(joined.friendSignups.length,0);
+  await assert.rejects(api(0,'POST',`/game/${today}/friends`,{fullName:'Guest Without Grade'}),/grade/);
 });

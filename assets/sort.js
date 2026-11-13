@@ -63,14 +63,15 @@
   var push = { subscribed: false, key: null };
   var simulateBeforeStart = false;
   var simulateAfterStart = false;
+  var previewClockStarted = 0;
 
   /* Local visual preview only. Never expose the switch on the live domain. */
   if (location.protocol === "file:" || ["localhost", "127.0.0.1", "::1"].indexOf(location.hostname) >= 0) {
     var timePreviews = document.createElement("div");
     timePreviews.className = "dev-time-controls";
     [
-      { label: "Simulate before 20:10", get: function () { return simulateBeforeStart; }, set: function (v) { simulateBeforeStart = v; simulateAfterStart = false; } },
-      { label: "Simulate after 20:10", get: function () { return simulateAfterStart; }, set: function (v) { simulateAfterStart = v; simulateBeforeStart = false; } }
+      { label: "Preview Before 19:55", get: function () { return simulateBeforeStart; }, set: function (v) { simulateBeforeStart = v; simulateAfterStart = false; } },
+      { label: "Preview After 19:55", get: function () { return simulateAfterStart; }, set: function (v) { simulateAfterStart = v; simulateBeforeStart = false; } }
     ].forEach(function (preview) {
       var button = document.createElement("button");
       button.type = "button";
@@ -80,16 +81,34 @@
       button.textContent = preview.label;
       button.addEventListener("click", function () {
         preview.set(!preview.get());
+        previewClockStarted = performance.now();
+        if (isPreview() && FBPreview.setSessionTime) FBPreview.setSessionTime(simulateBeforeStart ? "before" : simulateAfterStart ? "after" : null);
         timePreviews.querySelectorAll("[data-time-preview]").forEach(function (item, index) {
           var active = index === 0 ? simulateBeforeStart : simulateAfterStart;
           item.setAttribute("aria-pressed", String(active));
           item.textContent = active ? (index === 0 ? "Exit before preview" : "Exit after preview") :
-            (index === 0 ? "Simulate before 20:10" : "Simulate after 20:10");
+            (index === 0 ? "Preview Before 19:55" : "Preview After 19:55");
         });
         renderTonight();
+        updateCountdown();
       });
       timePreviews.appendChild(button);
     });
+    var friendsPreview = document.createElement("button");
+    friendsPreview.type = "button";
+    friendsPreview.className = "dev-time-toggle";
+    friendsPreview.textContent = "Preview friend sign-ups";
+    friendsPreview.addEventListener("click", function () {
+      if (!window.FBPreview || !FBPreview.simulateFriends) return;
+      state.changing = false; state.changingUpcoming = false;
+      FBPreview.simulateFriends();
+      FBPreview.activate();
+      simulateBeforeStart = true; simulateAfterStart = false;
+      previewClockStarted = performance.now();
+      FBPreview.setSessionTime("before");
+      boot();
+    });
+    timePreviews.appendChild(friendsPreview);
     var pairPreview = document.createElement("button");
     var pairActive = !!(window.FBPreview && FBPreview.hasSessionPair && FBPreview.hasSessionPair());
     pairPreview.type = "button";
@@ -168,7 +187,47 @@
 
   /* ------------------------------------------------------------ tonight -- */
 
-  function paint(html) { tonightEl.innerHTML = html; }
+  var countdownEl = document.createElement('div');
+  countdownEl.className = 'signup-countdown';
+  countdownEl.hidden = true;
+  tonightEl.parentNode.insertBefore(countdownEl, tonightEl);
+  function clubNow() {
+    return state.clockReceived ? state.clockServer + performance.now() - state.clockReceived : Date.now();
+  }
+  function updateCountdown() {
+    var t = state.tonight;
+    var countdownSession = t && (simulateBeforeStart || (t.nextSignup && t.nextSignup.date === t.date)) ? t : state.upcoming && t && t.nextSignup && t.nextSignup.date === state.upcoming.date ? state.upcoming : null;
+    var changingCountdownAnswer = countdownSession === state.upcoming ? state.changingUpcoming : state.changing;
+    if (countdownSession && countdownSession.me && (countdownSession.me.rsvp === 'in' || countdownSession.me.rsvp === 'out') && !changingCountdownAnswer) { countdownEl.hidden = true; return; }
+    if ((t && t.gameSuspended) || simulateAfterStart || (t && t.isGame && sessionStarted(t))) { countdownEl.hidden = true; return; }
+    if (simulateBeforeStart || simulateAfterStart) {
+      countdownEl.hidden = false;
+      var remaining = simulateAfterStart ? 0 : Math.max(0, 300 - Math.floor((performance.now() - previewClockStarted) / 1000));
+      countdownEl.textContent = remaining ? 'Sign-ups close in 00:' + String(Math.floor(remaining / 60)).padStart(2, '0') + ':' + String(remaining % 60).padStart(2, '0') : 'Session Started';
+      return;
+    }
+    var next = t && t.nextSignup;
+    if (!next && t && isPreview()) {
+      var v = t.isGame && !sessionStarted(t) ? t : state.upcoming;
+      if (v && v.isGame) next = { date: v.date, closesAt: Date.parse(v.date + 'T19:55:00+08:00') };
+    }
+    countdownEl.hidden = !next;
+    if (!next) return;
+    var seconds = Math.max(0, Math.ceil((next.closesAt - clubNow()) / 1000));
+    var days = Math.floor(seconds / 86400);
+    var clock = [Math.floor(seconds / 3600) % 24, Math.floor(seconds / 60) % 60, seconds % 60].map(function(n) { return String(n).padStart(2, '0'); }).join(':');
+    countdownEl.textContent = 'Sign-ups close in ' + (days ? days + 'd ' : '') + clock;
+    if (!seconds && !state.countdownReloading) {
+      state.countdownReloading = true;
+      loadTonight().then(function() { state.countdownReloading = false; });
+    }
+  }
+  window.setInterval(function() {
+    updateCountdown();
+    if (state.tonight && sessionStarted(state.tonight) !== state.sessionStartedShown) renderTonight();
+  }, 1000);
+
+  function paint(html) { tonightEl.innerHTML = html + (state.changing ? "" : friendsHtml(state.tonight)); }
 
   function noGameHtml() {
     return '<h2 class="tn-big">No session for tonight</h2>' +
@@ -181,14 +240,17 @@
   function gameHtml() {
     return '<h2 class="tn-big tn-fire"><span class="emoji">🔥</span> TONIGHT ' +
       '<span class="emoji">🔥</span></h2>' +
-      '<p class="tn-game">Game Scheduled 20:00 @sportsfield</p>';
+      '<p class="tn-game">20:00 @sportsfield</p>';
   }
 
   function sessionStarted(t) {
-    if (simulateBeforeStart) return false;
-    if (simulateAfterStart) return true;
+    if (t && t.date === t.today) {
+      if (simulateBeforeStart) return performance.now() - previewClockStarted >= 300000;
+      if (simulateAfterStart) return true;
+    }
     if (!t || !t.isGame || t.date !== t.today) return false;
     if (!t.canJoin) return true;
+    if (t.signupClosesAt && state.clockReceived) return clubNow() >= t.signupClosesAt;
     var now = new Date();
     var zone = t.tz || "Asia/Shanghai";
     var today = new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
@@ -197,7 +259,7 @@
     var parts = new Intl.DateTimeFormat("en-GB", { timeZone: zone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(now);
     var hour = Number(parts.find(function (part) { return part.type === "hour"; }).value);
     var minute = Number(parts.find(function (part) { return part.type === "minute"; }).value);
-    return hour * 60 + minute >= 20 * 60 + 10;
+    return hour * 60 + minute >= 19 * 60 + 55;
   }
 
   function startedHtml() { return '<h2 class="tn-big tn-answer">Session Started</h2>'; }
@@ -210,6 +272,7 @@
   }
 
   function participantsHtml(v, heading) {
+    if (!v.signedIn) return '';
     var people = v.participants || [];
     return '<h3 class="attendance-heading">' + esc(heading) + ' <span class="attendance-count">' + people.length + '</span></h3>' +
       (people.length ? '<ul class="participant-list">' + people.map(function (p) {
@@ -217,13 +280,116 @@
       }).join('') + '</ul>' : '<p class="tn-note">Nobody has joined yet. Be the first!</p>');
   }
 
+  var friendPanels = Object.create(null);
+  function friendsHtml(v) {
+    if (!v || v.gameSuspended || !v.canJoin || sessionStarted(v) || !v.me || v.me.rsvp !== 'in') return '';
+    var count = (v.friendSignups || []).length;
+    var panels = friendPanels[v.date] || {};
+    return '<section class="friend-signup"><details class="friend-panel" data-friend-panel="accounts" data-date="' + esc(v.date) + '"' + (panels.accounts ? ' open' : '') + '><summary aria-label="Sign up for friend"><span>Sign up for friend</span></summary><div class="friend-panel-body"><button class="btn" type="button" data-act="friend-open"><span>Choose friends</span></button>' +
+      '<div class="friend-temporary"><div class="friend-temporary-heading"><h3>无账号接龙</h3><span class="friend-limit">' + count + ' / 2 added</span></div><form class="friend-form"><fieldset class="friend-grades"><legend>Grade</legend><label><input type="radio" name="friendGrade" value="MS" required><span>MS</span></label><label><input type="radio" name="friendGrade" value="G9" required><span>G9</span></label><label><input type="radio" name="friendGrade" value="G10" required><span>G10</span></label><label><input type="radio" name="friendGrade" value="G11" required><span>G11</span></label><label><input type="radio" name="friendGrade" value="G12" required><span>G12</span></label></fieldset><label>Full name<input name="friendName" maxlength="80" required autocomplete="off"></label>' +
+      '<button class="btn solid" type="submit"><span>Add player</span></button></form>' +
+      '<ul>' + (v.friendSignups || []).map(function(g) { return '<li>' + esc(g.name) + ' <button class="tn-link" type="button" data-act="friend-remove" data-id="' + esc(g.id) + '">Remove</button></li>'; }).join('') +
+      '</ul></div></div></details><p class="friend-feedback" role="status"></p></section>';
+  }
+
+  var friendDialog = document.createElement('dialog');
+  friendDialog.className = 'preferred-dialog';
+  friendDialog.setAttribute('aria-labelledby', 'friendPickerTitle');
+  friendDialog.innerHTML = '<div class="preferred-dialog-head"><h2 id="friendPickerTitle">Choose friends</h2><button class="preferred-close" type="button" aria-label="Close">&times;</button></div><p class="preferred-count"></p><div class="preferred-list" role="group" aria-label="Friends with accounts"></div><p class="preferred-status" role="status"></p><div class="preferred-dialog-actions"><button class="btn solid friend-save" type="button"><span>Join for friends</span></button></div>';
+  document.body.appendChild(friendDialog);
+  var friendChoices = [], friendSelected = [], friendPickerDate = null, friendPickerUpcoming = false;
+  function paintFriendChoices() {
+    friendDialog.querySelector('.preferred-count').textContent = friendSelected.length + ' selected';
+    friendDialog.querySelector('.friend-save').disabled = !friendSelected.length;
+    var list = friendDialog.querySelector('.preferred-list');
+    list.innerHTML = '';
+    friendChoices.forEach(function(friend) {
+      var choice = document.createElement('button');
+      choice.type = 'button'; choice.className = 'preferred-choice';
+      var checked = friendSelected.indexOf(friend.id) >= 0;
+      choice.setAttribute('aria-pressed', String(checked));
+      choice.innerHTML = '<span class="preferred-check" aria-hidden="true">' + (checked ? '✓' : '') + '</span><span>' + esc(friend.name) + '</span>';
+      choice.addEventListener('click', function() {
+        var i = friendSelected.indexOf(friend.id);
+        if (i >= 0) friendSelected.splice(i, 1); else friendSelected.push(friend.id);
+        var scroll = list.scrollTop; paintFriendChoices(); list.scrollTop = scroll;
+        Array.from(list.children)[friendChoices.indexOf(friend)].focus({ preventScroll: true });
+      });
+      list.appendChild(choice);
+    });
+    if (!friendChoices.length) list.textContent = 'No other accounts available.';
+  }
+  function openFriendPicker(friends, upcoming, date) {
+    friendChoices = friends; friendSelected = []; friendPickerDate = date; friendPickerUpcoming = upcoming;
+    friendDialog.querySelector('.preferred-status').textContent = '';
+    paintFriendChoices(); friendDialog.showModal();
+  }
+  friendDialog.querySelector('.preferred-close').addEventListener('click', function() { if (!state.busy) friendDialog.close(); });
+  friendDialog.addEventListener('cancel', function(e) { if (state.busy) e.preventDefault(); });
+  friendDialog.querySelector('.friend-save').addEventListener('click', function() {
+    if (state.busy || !friendSelected.length) return;
+    state.busy = true; ++state.loadRequest;
+    friendDialog.querySelector('.friend-save').disabled = true;
+    api('POST', '/game/' + friendPickerDate + '/friends', { userIds: friendSelected.slice() }).then(function(v) {
+      state.busy = false;
+      if (friendPickerUpcoming) state.upcoming = v; else state.tonight = v;
+      friendDialog.close(); renderTonight(); renderUpcoming();
+      if (isAdmin()) refreshLeader();
+    }, function(err) {
+      state.busy = false;
+      friendDialog.querySelector('.preferred-status').textContent = err.message;
+      friendDialog.querySelector('.friend-save').disabled = false;
+    });
+  });
+
+  [tonightEl, upcomingEl].forEach(function(container) {
+    container.addEventListener('toggle', function(e) {
+      var panel = e.target;
+      if (!panel.matches('.friend-panel') || !panel.isConnected) return;
+      var date = panel.getAttribute('data-date');
+      friendPanels[date] = friendPanels[date] || {};
+      friendPanels[date][panel.getAttribute('data-friend-panel')] = panel.open;
+    }, true);
+    var upcoming = container === upcomingEl;
+    function request(method, body, section) {
+      if (state.busy) return;
+      var v = upcoming ? state.upcoming : state.tonight;
+      state.busy = true;
+      ++state.loadRequest;
+      api(method, '/game/' + v.date + '/friends', body).then(function(result) {
+        state.busy = false;
+        if (method === 'GET') {
+          openFriendPicker(result.friends, upcoming, v.date);
+        } else {
+          if (upcoming) state.upcoming = result; else state.tonight = result;
+          renderTonight(); renderUpcoming();
+          if (isAdmin()) refreshLeader();
+        }
+      }, function(err) { state.busy = false; section.querySelector('.friend-feedback').textContent = err.message; });
+    }
+    container.addEventListener('submit', function(e) {
+      if (!e.target.matches('.friend-form')) return;
+      e.preventDefault();
+      request('POST', { fullName: e.target.elements.friendName.value, grade: e.target.elements.friendGrade.value }, e.target.closest('.friend-signup'));
+    });
+    container.addEventListener('click', function(e) {
+      var b = e.target.closest('[data-act]');
+      if (!b || state.busy) return;
+      var section = b.closest('.friend-signup');
+      if (!section) return;
+      var act = b.getAttribute('data-act');
+      if (act === 'friend-open') request('GET', undefined, section);
+      if (act === 'friend-remove') request('DELETE', { id: b.getAttribute('data-id') }, section);
+    });
+  });
+
   function changeAnswerHtml() {
     return '<div class="tn-actions"><button class="btn session-secondary" data-act="change" type="button"><span>Change my answer</span></button></div>';
   }
 
   function renderUpcoming() {
     var v = state.upcoming;
-    upcomingBandEl.hidden = (!serverMode() && !isPreview()) || !v || !v.isGame;
+    upcomingBandEl.hidden = !!(state.tonight && state.tonight.gameSuspended) || (!serverMode() && !isPreview()) || !v || !v.isGame;
     if (upcomingBandEl.hidden) { upcomingEl.innerHTML = ''; return; }
     var h = '<h2 class="tn-big tn-answer">' + esc(longDate(v.date)) + '</h2>';
     if (!v.signedIn || state.changingUpcoming || !v.me || !v.me.rsvp) h += '<p class="tn-small">Sign up a day ahead.</p>';
@@ -233,13 +399,12 @@
       h += '<p class="upcoming-answer">' + (v.me.rsvp === 'in' ? 'Session Joined' : 'Passed') + '</p>' +
         changeAnswerHtml() + '<p class="tn-error" id="upcomingError"></p>';
     }
-    upcomingEl.innerHTML = h + '<div class="session-attendance">' + participantsHtml(v, 'Player List') + '</div>';
+    upcomingEl.innerHTML = h + (state.changingUpcoming ? '' : friendsHtml(v)) + (v.signedIn ? '<div class="session-attendance">' + participantsHtml(v, 'Player List') + '</div>' : '');
   }
 
   function inHtml() {
     return '<h2 class="tn-big tn-answer">You’re in!</h2>' +
       '<p class="tn-small">Stay tuned for the team selection!</p>' +
-      bellHtml() +
       changeAnswerHtml() +
       '<p class="tn-error" id="tnError"></p>';
   }
@@ -278,16 +443,16 @@
   }
 
   function signInHtml() {
-    return '<div class="tn-actions"><a class="btn solid big" href="admin.html"><span>Sign in to join</span></a></div>' +
-      '<p class="tn-note">Use your Tsinglan Microsoft account &mdash; the same one as Outlook and Teams.</p>';
+    return '<div class="tn-actions"><a class="btn solid big" href="admin.html"><span>Sign in to join</span></a></div>';
   }
 
   function renderTonight() {
+    updateCountdown();
     if (state.spinning) return;
     var t = state.tonight;
-    if (simulateBeforeStart && t && t.isGame) t = Object.assign({}, t, { canJoin: true });
+    if ((simulateBeforeStart || simulateAfterStart) && t) t = Object.assign({}, t, { isGame: true, canJoin: simulateBeforeStart && performance.now() - previewClockStarted < 300000 });
     state.sessionStartedShown = sessionStarted(t);
-    todayParticipantsEl.hidden = (!serverMode() && !isPreview()) || !t || !t.isGame;
+    todayParticipantsEl.hidden = (!serverMode() && !isPreview()) || !t || !t.isGame || !t.signedIn;
     todayParticipantsEl.innerHTML = todayParticipantsEl.hidden ? '' : participantsHtml(t, 'Player List');
     if (simulateAfterStart && (!t || !t.isGame)) return paint(startedHtml());
     if (!serverMode() && !isPreview()) {
@@ -296,7 +461,9 @@
         '<p class="tn-small">Game nights need the club server, which this copy of the site is running without.</p>');
     }
     if (!t) return paint('<p class="tn-small">Checking tonight&hellip;</p>');
+    if (t.gameSuspended) return paint('<h2 class="tn-big tn-answer">Game unavailable</h2>');
     if (!t.isGame) return paint(noGameHtml());
+    if ((simulateBeforeStart || simulateAfterStart) && state.sessionStartedShown) return paint(startedHtml());
     if (state.sessionStartedShown) {
       if (t.drawn && t.mine) return paint(revealedAlready(t) ? revealHtml(t.mine) : seeYourTeamHtml());
       return paint(startedHtml());
@@ -332,9 +499,12 @@
       if (request !== state.loadRequest) return;
       var before = state.tonight && state.tonight.today;
       state.tonight = v;
+      state.clockServer = v.serverNow || Date.now();
+      state.clockReceived = performance.now();
       state.upcoming = v.upcoming || null;
       state.games = v.games;
       state.loadedAt = Date.now();
+      updateCountdown();
       /* Past midnight "tonight" is a new day. A leader who was looking at
          tonight moves on with it instead of staring at yesterday. */
       if (before && v.today !== before) {
@@ -567,7 +737,6 @@
     if (act === "join") answer("in");
     else if (act === "pass") answer("out");
     else if (act === "change") { state.changing = true; renderTonight(); }
-    else if (act === "notify") turnOnPush(true).then(function () { renderTonight(); });
     else if (act === "reveal") spinReveal(b);
   });
 
@@ -589,30 +758,6 @@
   function pushSupported() {
     return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
   }
-  function isIOS() {
-    return /iP(hone|ad|od)/.test(navigator.userAgent) ||
-      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  }
-  function installedApp() {
-    return !!((window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone);
-  }
-
-  function bellHtml() {
-    if (!pushSupported()) {
-      return isIOS() && !installedApp()
-        ? '<p class="tn-note"><b>On iPhone:</b> tap Share &rarr; <b>Add to Home Screen</b>, open Frisbeing from your Home Screen, and turn notifications on there to get a buzz when the teams are out.</p>'
-        : '<p class="tn-note">This browser can’t show notifications &mdash; check back here once the teams are drawn.</p>';
-    }
-    if (Notification.permission === "denied") {
-      return '<p class="tn-note">Notifications are blocked for this site, so check back here once the teams are drawn.</p>';
-    }
-    if (Notification.permission === "granted" && push.subscribed) {
-      return '<p class="tn-note">🔔 <b>Notifications are on.</b> This device will buzz when the teams are out.</p>';
-    }
-    return '<div class="tn-actions notify-actions"><button class="btn session-secondary" data-act="notify" type="button">' +
-      '<span>🔔 Notify me when teams are out</span></button></div>';
-  }
-
   function b64ToBytes(s) {
     s = s.replace(/-/g, "+").replace(/_/g, "/");
     while (s.length % 4) s += "=";
@@ -832,6 +977,8 @@
     return joined + " joined → " + sizes.join(" / ") + " per team";
   }
 
+  var preferredTeamChoices = Object.create(null);
+  function preferredTeamsEnabled(v) { return Object.prototype.hasOwnProperty.call(preferredTeamChoices, v.date) ? preferredTeamChoices[v.date] : v.preferredTeamsEnabled !== false; }
   function drawZoneHtml(v) {
     var joined = (v.joined || []).length;
     var h = '<div class="draw-zone">';
@@ -855,7 +1002,9 @@
     [2, 4].forEach(function (k) {
       h += '<button type="button" data-act="n" data-n="' + k + '" aria-pressed="' + (k === n) + '"' + (joined < k ? ' disabled' : '') + '><span>' + k + '</span></button>';
     });
-    h += '</div><p class="tn-error" id="drawError"></p>';
+    h += '</div>';
+    h += '<button type="button" class="preferred-team-toggle" data-act="preferred-team-toggle" role="switch" aria-checked="' + preferredTeamsEnabled(v) + '"><span>Preferred Teammate</span><span class="preferred-team-track" aria-hidden="true"></span></button>';
+    h += '<p class="tn-error" id="drawError"></p>';
 
     if (hasTeams && v.teams) {
       if (v.hasDraft) {
@@ -940,7 +1089,7 @@
       var left = reduce ? 0 : SPIN_MS - (Date.now() - started);
       return new Promise(function (r) { window.setTimeout(r, Math.max(0, left)); });
     }
-    api("POST", "/game/" + v.date + "/draw", { n: n }).then(function (res) {
+    api("POST", "/game/" + v.date + "/draw", { n: n, preferredTeamsEnabled: preferredTeamsEnabled(v) }).then(function (res) {
       settle().then(function () {
         state.busy = false;
         state.spinning = false;
@@ -1006,6 +1155,7 @@
     if (!b || b.disabled || state.busy || state.spinning) return;
     var act = b.getAttribute("data-act");
     if (act === "add" || act === "remove") scheduleChange(act);
+    else if (act === "preferred-team-toggle") { preferredTeamChoices[state.day.date] = !preferredTeamsEnabled(state.day); renderDay(); }
     else if (act === "draw") throwDisc(b);
     else if (act === "publish") publishTeams();
     else if (act === "undraw") takeBack();

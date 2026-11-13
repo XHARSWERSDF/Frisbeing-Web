@@ -17,6 +17,8 @@
   var tierFilter = "all";
   var attendanceCounts = Object.create(null);
   var walkInCounts = Object.create(null);
+  var attendanceFrequencies = Object.create(null);
+  var suspensionStates = Object.create(null);
   var filterRequest = 0;
   var displayedTier = Object.create(null);
 
@@ -126,14 +128,20 @@
     syncDisplayedTiers();
     var rank = { A: 0, I: 1, B: 2, U: 3 };
     return roster.filter(function (member) {
-      return tierFilter === "all" || tierFilter === "tier" || (tierFilter === "attendance" && isAdmin()) || displayedTier[memberKey(member)] === tierFilter;
+      return tierFilter === "all" || tierFilter === "tier" || ((tierFilter === "attendance" || tierFilter === "rate") && isAdmin()) || displayedTier[memberKey(member)] === tierFilter;
     }).sort(function (a, b) {
       var attendanceOrder = tierFilter === "attendance" && isAdmin()
         ? (attendanceCounts[memberKey(b)] || 0) - (attendanceCounts[memberKey(a)] || 0) : 0;
       var tierOrder = tierFilter === "tier"
         ? (rank[displayedTier[memberKey(a)]] ?? 4) - (rank[displayedTier[memberKey(b)]] ?? 4)
         : 0;
-      return attendanceOrder || tierOrder || a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+      var rateOrder = 0;
+      if (tierFilter === "rate" && isAdmin()) {
+        var aRate = attendanceFrequencies[memberKey(a)], bRate = attendanceFrequencies[memberKey(b)];
+        var aValid = !!aRate && aRate.total > 0, bValid = !!bRate && bRate.total > 0;
+        rateOrder = Number(bValid) - Number(aValid) || (aValid && bValid ? bRate.joined * aRate.total - aRate.joined * bRate.total : 0);
+      }
+      return rateOrder || attendanceOrder || tierOrder || a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
     });
   }
 
@@ -143,16 +151,18 @@
     if (!button || !isAdmin()) return;
     var requestId = ++filterRequest;
     var selected = button.getAttribute("data-tier-filter");
-    if (selected !== "attendance") { tierFilter = selected; paint(); return; }
+    if (selected !== "attendance" && selected !== "rate") { tierFilter = selected; paint(); return; }
     button.disabled = true;
     FBStore._request("/roster-attendance").then(function (data) {
       if (requestId !== filterRequest || !isAdmin()) return;
       attendanceCounts = Object.create(null);
       (data.members || []).forEach(function (member) {
+        attendanceFrequencies[memberKey(member)] = member.attendanceFrequency || null;
+        suspensionStates[memberKey(member)] = { canSuspend: !!member.canSuspend, suspended: !!member.gameSuspended };
         attendanceCounts[memberKey(member)] = Math.max(0, Number(member.attendanceCount) || 0);
         walkInCounts[memberKey(member)] = Math.max(0, Number(member.walkInCount) || 0);
       });
-      tierFilter = "attendance";
+      tierFilter = selected;
       paint();
     }).catch(function (error) {
       if (requestId === filterRequest) say(rosReport, [{ kind: "bad", html: esc(error.message || "Could not load attendance.") }]);
@@ -247,19 +257,29 @@
     }
     shownMembers.forEach(function (m) {
       var row = document.createElement("div");
-      row.className = "member" + (isAdmin() && tierFilter === "attendance" ? " attendance-row" : "");
+      row.className = "member" + (isAdmin() && (tierFilter === "attendance" || tierFilter === "rate") ? " attendance-row" : "");
 
       var nm = document.createElement("span");
       nm.className = "nm";
       nm.textContent = m.name;
-      if (isAdmin() && tierFilter === "attendance") {
+      if (isAdmin() && (tierFilter === "attendance" || tierFilter === "rate")) {
         var count = attendanceCounts[memberKey(m)] || 0;
         var attendance = document.createElement("small");
         attendance.style.cssText = "display:block;color:var(--mist);font-size:12px;font-weight:400";
-        attendance.textContent = count + (count === 1 ? " session attended" : " sessions attended");
+        attendance.textContent = count + " present";
+        if (tierFilter === "rate") {
+          var frequency = attendanceFrequencies[memberKey(m)] || { joined: 0, total: 0 };
+          var percent = frequency.total ? (frequency.joined / frequency.total * 100).toFixed(1).replace(/\.0$/, "") : "0";
+          attendance.textContent = percent + "% · " + frequency.joined + "/" + frequency.total;
+          attendance.title = "Sessions joined / completed sessions since account creation";
+        }
         nm.appendChild(attendance);
       }
       row.appendChild(nm);
+      if (isAdmin() && tierFilter === "rate") {
+        listEl.appendChild(row);
+        return;
+      }
       if (isAdmin() && tierFilter === "attendance") {
         var counter = document.createElement("div");
         counter.className = "attendance-stepper";
@@ -283,6 +303,25 @@
           if (delta < 0) counter.appendChild(output);
         });
         row.appendChild(counter);
+        var status = suspensionStates[memberKey(m)];
+        if (status && status.canSuspend) {
+          var suspension = document.createElement("label");
+          suspension.className = "game-suspension-control";
+          var checkbox = document.createElement("input");
+          checkbox.type = "checkbox"; checkbox.checked = status.suspended;
+          checkbox.setAttribute("aria-label", "Suspend " + m.name + " from games");
+          suspension.appendChild(checkbox);
+          var caption = document.createElement("span"); caption.textContent = "Suspend"; suspension.appendChild(caption);
+          checkbox.addEventListener("change", function() {
+            checkbox.disabled = true;
+            FBStore._request("/game-suspension", { method: "PUT", body: { name: m.name, suspended: checkbox.checked } }).then(function(data) {
+              status.suspended = data.gameSuspended; checkbox.checked = status.suspended;
+            }).catch(function(error) { checkbox.checked = status.suspended; say(rosReport, [{ kind: "bad", html: esc(error.message) }]); }).finally(function() { checkbox.disabled = false; });
+          });
+          row.appendChild(suspension);
+        } else {
+          var spacer = document.createElement("span"); spacer.className = "game-suspension-spacer"; spacer.setAttribute("aria-hidden", "true"); row.appendChild(spacer);
+        }
         listEl.appendChild(row);
         return;
       }

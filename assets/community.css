@@ -5,7 +5,7 @@
 .background-picker button[aria-pressed="true"] { background: #e4e2d4; color: #163627; }
 .background-picker button:focus-visible { outline: 2px solid var(--chalk); outline-offset: 2px; }
 .pattern-background:not(.fris-off-school-body) { background: #08150f; }
-.pattern-background:not(.fris-off-school-body)::before { content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none; background: url('frisbeing-damask.png') center top / 640px auto repeat; opacity: .18; }
+.pattern-background:not(.fris-off-school-body)::before { content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none; background: url('frisbeing-damask.png') center var(--wallpaper-y, 0px) / 640px auto repeat; opacity: .18; }
 .pattern-background:not(.fris-off-school-body) #damask,
 .pattern-background:not(.fris-off-school-body) .scroll-art,
 .pattern-background:not(.fris-off-school-body) .page-background-tint { display: none !important; }

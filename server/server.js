@@ -32,8 +32,9 @@ const path = require("path");
 const crypto = require("crypto");
 const FB = require(path.join(__dirname, "..", "assets", "engine.js"));
 const AttendanceAwards = require("../assets/attendance-awards.js");
+function attendanceFrequencies() { return AttendanceAwards.frequencyStats(db.users, db.schedule, db.games, Date.now(), CLUB_TZ); }
 function passionSupermanState(user) {
-  const result = AttendanceAwards.reconcile(db.roster, db.users);
+  const result = AttendanceAwards.reconcile(db.roster, db.users, Date.now(), attendanceFrequencies());
   if (result.changed) save();
   return result.states[user.id];
 }
@@ -454,9 +455,24 @@ function relinkAccounts() {
 }
 
 /* What an account holder is told about themselves. Never their tier. */
+function signupGrade(value) {
+    if (/^ms$/i.test(String(value || "").trim())) return "MS";
+  const grade = String(value || "").trim().replace(/^(?:grade|g)\s*/i, "").replace(/\s+/g, "");
+  return /^(?:[1-9]|1[0-2])$/.test(grade) ? "G" + grade : null;
+}
+function signupFullNames(user) {
+  const known = directory[user.email] || {};
+  return [known.name, user.fullName, user.member || user.name].filter(Boolean);
+}
+function signupAccountGrade(user) { return signupGrade((directory[user.email] || {}).grade || user.grade); }
+
+function gameSuspended(user) { return !!user && roleFor(user.email) === "player" && user.gameSuspended === true; }
+
 function accountView(user) {
   return {
     email: user.email, name: user.name, role: roleFor(user.email),
+    attendanceFrequency: attendanceFrequencies()[user.id] || { joined: 0, total: 0, rate: 0 },
+    gameSuspended: gameSuspended(user),
     member: user.member || null, attendanceCount: Number(user.attendanceCount) || 0,
     preferredTeammates: Array.isArray(user.preferredTeammates) ? user.preferredTeammates : []
   };
@@ -570,7 +586,7 @@ function finalizeAttendanceDue(now = Date.now()) {
   if (changed) save();
 }
 
-function passionStarState(user, now = Date.now()) {
+function personalAttendanceAwards(user, now = Date.now()) {
   const today = clubDate(now);
   const latest = sessionKind(today) && clubMinutes(now) < 21 * 60 ? addDays(today, -1) : today;
   const cutoff = addDays(today, -KEEP_DAYS);
@@ -581,20 +597,9 @@ function passionStarState(user, now = Date.now()) {
     if (!game || !game.attendanceFinalizedAt || !Array.isArray(game.attendance) || !game.attendance.includes(user.id)) break;
     streak++;
   }
-  const eligible = (Number(user.attendanceCount) || 0) >= 5 || streak >= 4;
-  let changed = false;
-  if (eligible && !user.passionStarUnlockedAt) {
-    user.passionStarUnlockedAt = now;
-    changed = true;
-  }
-  if (changed) save();
-  return {
-    unlocked: !!user.passionStarUnlockedAt,
-    unseen: !!user.passionStarUnlockedAt && !user.passionStarSeenAt,
-    unlockedAt: user.passionStarUnlockedAt || null,
-    seenAt: user.passionStarSeenAt || null,
-    currentStreak: streak
-  };
+  const awards = AttendanceAwards.reconcilePersonal(user, streak, now);
+  if (awards.changed) save();
+  return awards;
 }
 
 function isDateString(s) {
@@ -636,8 +641,8 @@ function currentName(p) {
 /* Everyone who answered Join, shaped the way the sorting engine wants.
    Tier and gender come from their entry on the squad list; anyone not linked
    to it yet plays as T4. Only attending members contribute teammate bonuses. */
-function joinedPlayers(game) {
-  if (Array.isArray(game.attendanceSnapshot)) return game.attendanceSnapshot.map((player) => ({ ...player }));
+function joinedPlayers(game, preferredTeamsEnabled = !game.draw || game.draw.preferredTeamsEnabled !== false) {
+  if (Array.isArray(game.attendanceSnapshot)) return game.attendanceSnapshot.map((player) => ({ ...player, teammateGroupId: preferredTeamsEnabled ? player.teammateGroupId : null }));
   const out = [];
   for (const [userId, answer] of Object.entries(game.rsvps)) {
     if (answer !== "in") continue;
@@ -651,23 +656,40 @@ function joinedPlayers(game) {
       tier: entry ? entry.tier : "U",
       gender: entry ? entry.gender : "",
       position: FB.position(entry),
-      teammateGroupId: (teammateGroupFor(user.id) || {}).id || null
+      teammateGroupId: preferredTeamsEnabled ? (teammateGroupFor(user.id) || {}).id || null : null
     });
   }
+  for (const guest of game.guests || []) out.push({ id: guest.id, name: guest.name, member: null, tier: "B", gender: "", position: "c", teammateGroupId: null });
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/* Everyone can see the names joining a session. Only admins get tiers,
+// Use the club clock for both enforcement and the client countdown.
+function signupDeadline(date, now = Date.now()) {
+  const days = (Date.parse(date + "T00:00:00Z") - Date.parse(clubDate(now) + "T00:00:00Z")) / 86400000;
+  return now + days * 86400000 + (19 * 60 + 55 - clubMinutes(now)) * 60000 - (now % 60000);
+}
+function nextSignup(now = Date.now()) {
+  const today = clubDate(now);
+  for (let day = 0; day <= 366; day++) {
+    const date = addDays(today, day);
+    if (sessionKind(date) && signupDeadline(date, now) > now) return { date, closesAt: signupDeadline(date, now) };
+  }
+  return null;
+}
+
+/* Signed-in accounts can see the names joining a session. Only admins get tiers,
    account links, passing lists and all teams; players get their own team. */
 function gameView(date, who, today = clubDate()) {
   const kind = sessionKind(date);
   const game = db.games[date] || null;
   const view = {
     date, today, tz: CLUB_TZ, kind, isGame: !!kind,
+    serverNow: Date.now(), signupClosesAt: signupDeadline(date), nextSignup: nextSignup(),
     games: db.gamesVersion, signedIn: !!who, role: who ? who.role : null,
-    participants: game ? joinedPlayers(game).map((p) => ({ name: p.name })) : [],
-    canJoin: !!kind && date >= today && date <= addDays(today, 1) &&
-      (date !== today || clubMinutes() < 20 * 60 + 10)
+    participants: who && game ? joinedPlayers(game).map((p) => ({ name: p.name })) : [],
+    gameSuspended: !!who && gameSuspended(who.user),
+    canJoin: !(who && gameSuspended(who.user)) && !!kind && date >= today && date <= addDays(today, 1) &&
+      (date !== today || clubMinutes() < 19 * 60 + 55)
   };
   if (!who) return view;
 
@@ -677,6 +699,7 @@ function gameView(date, who, today = clubDate()) {
   const managesClub = !!who && runsTheClub(who);
   const published = !!draw && draw.published !== false;
   view.me = { rsvp: (game && game.rsvps[who.user.id]) || null };
+  view.friendSignups = (game && game.guests || []).filter(g => g.ownerId === who.user.id).map(g => ({ id: g.id, name: g.name }));
   view.mine = null;
   view.drawn = published;
   view.hasDraft = !!draw && !published && managesClub;
@@ -692,6 +715,7 @@ function gameView(date, who, today = clubDate()) {
     };
   }
   if (managesClub) {
+    view.preferredTeamsEnabled = !draw || draw.preferredTeamsEnabled !== false;
     view.joined = game ? joinedPlayers(game) : [];
     view.passed = game
       ? Object.entries(game.rsvps).filter(([, a]) => a === "out")
@@ -976,6 +1000,9 @@ const server = http.createServer(async (req, res) => {
       } else if (name && user.name !== name) {
         user.name = name;
       }
+      const known = directory[email] || {};
+      user.fullName = known.name || user.member || user.fullName || name;
+      if (known.grade) user.grade = known.grade;
       save();
       return send(res, 200, { token: issueToken(user.id), account: accountView(user) });
     }
@@ -1014,7 +1041,8 @@ const server = http.createServer(async (req, res) => {
         role: who.role,
         account: who.user ? accountView(who.user) : null,
         passionSuperman: who.user ? passionSupermanState(who.user) : null,
-        passionStar: who.user ? passionStarState(who.user) : null,
+        passionStar: who.user ? personalAttendanceAwards(who.user).star : null,
+        passionUltra: who.user ? personalAttendanceAwards(who.user).ultra : null,
         teammateGroup: who.user ? teammateGroupView(teammateGroupFor(who.user.id), who.user) : null,
         teammateInvitations: who.user ? teammateInvitationsFor(who.user) : [],
         teammateInvitationsSent: who.user ? teammateInvitationsSentBy(who.user) : []
@@ -1026,8 +1054,18 @@ const server = http.createServer(async (req, res) => {
       if (!who || !who.user) return send(res, 401, { error: "Not signed in." });
       finalizeAttendanceDue();
       const award = passionSupermanState(who.user);
-      if (!award.unlocked) return send(res, 409, { error: "This award belongs to the current attendance top three." });
+      if (!award.unlocked) return send(res, 409, { error: "This award belongs to the current participation-frequency top three." });
       if (award.unseen) { who.user.passionSupermanSeenAt = Date.now(); save(); }
+      return send(res, 200, { seen: true, alreadySeen: !award.unseen });
+    }
+
+    if (route === "/me/passion-ultra/seen" && req.method === "POST") {
+      finalizeAttendanceDue();
+      const who = whoIs(req);
+      if (!who || !who.user) return send(res, 401, { error: "Not signed in." });
+      const award = personalAttendanceAwards(who.user).ultra;
+      if (!award.unlocked) return send(res, 409, { error: "Super Passion Star requires at least 20 attended sessions." });
+      if (award.unseen) { who.user.passionUltraSeenAt = Date.now(); save(); }
       return send(res, 200, { seen: true, alreadySeen: !award.unseen });
     }
 
@@ -1035,7 +1073,7 @@ const server = http.createServer(async (req, res) => {
       finalizeAttendanceDue();
       const who = whoIs(req);
       if (!who) return send(res, 401, { error: "Not signed in." });
-      const state = passionStarState(who.user);
+      const state = personalAttendanceAwards(who.user).star;
       if (!state.unlocked) return send(res, 409, { error: "The Passion Star has not been unlocked yet." });
       if (state.unseen) {
         who.user.passionStarSeenAt = Date.now();
@@ -1146,6 +1184,19 @@ const server = http.createServer(async (req, res) => {
         teammateGroup: teammateGroupView(teammateGroupFor(who.user.id), who.user),
         teammateInvitations: teammateInvitationsFor(who.user), teammateInvitationsSent: teammateInvitationsSentBy(who.user)
       });
+    }
+
+    const cancelInvitation = /^\/me\/teammate-invitations\/([a-f0-9]{16})\/cancel$/.exec(route);
+    if (cancelInvitation && req.method === "POST") {
+      const who = whoIs(req);
+      if (!who || !who.user) return send(res, 401, { error: "Not signed in." });
+      const invitation = db.teammateInvitations.find((entry) => entry.id === cancelInvitation[1] && entry.fromUserId === who.user.id && entry.status === "pending");
+      if (!invitation) return send(res, 404, { error: "That invitation is no longer pending. Refresh to see the latest team." });
+      invitation.status = "cancelled";
+      invitation.respondedAt = Date.now();
+      who.user.preferredTeammates = (who.user.preferredTeammates || []).filter((name) => FB.norm(name) !== FB.norm(invitation.toMember));
+      save();
+      return send(res, 200, { ok: true });
     }
 
     const dismissInvitation = /^\/me\/teammate-invitations\/([a-f0-9]{16})\/dismiss$/.exec(route);
@@ -1283,6 +1334,24 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { removed: true, id });
     }
 
+    if (route === "/game-suspension" && req.method === "PUT") {
+      const who = whoIs(req);
+      if (!runsTheClub(who)) return refuse(res, who);
+      const body = await readBody(req);
+      const target = db.users.find(u => u.member && FB.norm(u.member) === FB.norm(body.name || ""));
+      if (!target || roleFor(target.email) !== "player" || typeof body.suspended !== "boolean") return send(res, 400, { error: "Choose a Member account and a suspension status." });
+      target.gameSuspended = body.suspended;
+      if (body.suspended) for (const [date, game] of Object.entries(db.games)) {
+        if (date < clubDate() || game.attendanceFinalizedAt) continue;
+        if (game.rsvps[target.id] === "in") {
+          game.rsvps[target.id] = "out";
+          if (game.draw) game.draw.teams = FB.refreshDrawAttendance(game.draw.teams, joinedPlayers(game)).teams;
+        }
+      }
+      db.gamesVersion++; db.version++; save();
+      return send(res, 200, { name: target.member, gameSuspended: gameSuspended(target) });
+    }
+
     if (route === "/roster-attendance" && req.method === "PUT") {
       const who = whoIs(req);
       if (!runsTheClub(who)) return refuse(res, who);
@@ -1300,9 +1369,10 @@ const server = http.createServer(async (req, res) => {
       const who = whoIs(req);
       if (!runsTheClub(who)) return refuse(res, who);
       finalizeAttendanceDue();
+      const frequencies = attendanceFrequencies();
       return send(res, 200, { members: db.roster.map((member) => {
         const account = db.users.find((user) => user.member && FB.norm(user.member) === FB.norm(member.name));
-        return { name: member.name, attendanceCount: Math.max(0, Number(account && account.attendanceCount) || 0), walkInCount: Math.max(0, Number((db.walkInCounts || {})[FB.norm(member.name)]) || 0) };
+        return { name: member.name, attendanceFrequency: account ? frequencies[account.id] : null, canSuspend: !!account && roleFor(account.email) === "player", gameSuspended: gameSuspended(account), attendanceCount: Math.max(0, Number(account && account.attendanceCount) || 0), walkInCount: Math.max(0, Number((db.walkInCounts || {})[FB.norm(member.name)]) || 0) };
       }) });
     }
 
@@ -1481,10 +1551,68 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, view);
     }
 
+    const friends = /^\/game\/(\d{4}-\d{2}-\d{2})\/friends$/.exec(route);
+    if (friends && ["GET", "POST", "DELETE"].includes(req.method)) {
+      const who = whoIs(req);
+      if (!who) return send(res, 401, { error: "Sign in first." });
+      if (gameSuspended(who.user)) return send(res, 403, { error: "Game sign-ups are unavailable for your account." });
+      const date = friends[1];
+      const view = gameView(date, who);
+      if (!isDateString(date) || !view.canJoin) return send(res, 400, { error: "Sign-ups are closed for this session." });
+      const game = gameFor(date);
+      if (game.rsvps[who.user.id] !== "in") return send(res, 403, { error: "Join this session before signing up a friend." });
+      if (req.method === "GET") return send(res, 200, { friends: db.users.filter(u => u.id !== who.user.id && !gameSuspended(u) && game.rsvps[u.id] !== "in").map(u => ({ id: u.id, name: u.name || nameFromEmail(u.email) })).sort((a,b) => a.name.localeCompare(b.name)) });
+      if (tooMany("friends:" + who.user.id, 60, 10 * 60 * 1000)) return send(res, 429, { error: "Please wait before adding more friends." });
+      const body = await readBody(req);
+      game.guests = game.guests || [];
+      if (req.method === "DELETE") {
+        const guest = game.guests.find(g => g.id === body.id);
+        if (!guest || guest.ownerId !== who.user.id) return send(res, 403, { error: "You can only remove temporary players you added." });
+        game.guests = game.guests.filter(g => g.id !== body.id);
+      } else if (body.userId || Array.isArray(body.userIds)) {
+        const ids = [...new Set(Array.isArray(body.userIds) ? body.userIds : [body.userId])];
+        if (!ids.length) return send(res, 400, { error: "Choose friends' accounts." });
+        const selected = ids.map(id => db.users.find(u => u.id === id && u.id !== who.user.id));
+        if (selected.some(u => !u)) return send(res, 400, { error: "Choose friends' accounts." });
+        if (selected.some(gameSuspended)) return send(res, 403, { error: "A selected account is suspended from games." });
+        if (selected.some(u => game.rsvps[u.id] === "in")) return send(res, 409, { error: "A selected friend has already joined. Refresh the list." });
+        for (const friend of selected) game.rsvps[friend.id] = "in";
+      } else {
+        const name = typeof (body.fullName || body.name) === "string" ? (body.fullName || body.name).trim().replace(/\s+/g, " ") : "";
+        const grade = signupGrade(body.grade);
+        if (!grade) return send(res, 400, { error: "Choose a grade: MS, G9, G10, G11 or G12." });
+        if (!name || name.length > 80 || /[\x00-\x1f]/.test(name)) return send(res, 400, { error: "Enter a full name of 1–80 characters." });
+        const sameName = db.users.filter(u => signupFullNames(u).some(n => FB.norm(n) === FB.norm(name)));
+        const matches = sameName.filter(u => signupAccountGrade(u) === grade);
+        if (matches.length > 1) return send(res, 409, { error: "More than one account matches. Choose the account from the list." });
+        if (matches.length === 1) {
+          const friend = matches[0];
+          if (gameSuspended(friend)) return send(res, 403, { error: "This account is suspended from games." });
+          if (game.rsvps[friend.id] === "in") return send(res, 409, { error: "This player has already joined." });
+          game.rsvps[friend.id] = "in";
+        } else {
+          if (sameName.length) return send(res, 409, { error: "The name belongs to an existing account. Check the grade or choose the account from the list." });
+          if (game.guests.some(g => FB.norm(g.name) === FB.norm(name) && (!g.grade || g.grade === grade))) return send(res, 409, { error: "This player has already joined." });
+          if (game.guests.filter(g => g.ownerId === who.user.id).length >= 2) return send(res, 400, { error: "You can sign up at most two temporary players per session." });
+          game.guests.push({ id: "guest-" + crypto.randomBytes(16).toString("hex"), name, grade, ownerId: who.user.id });
+        }
+      }
+      if (game.draw) {
+        game.draw.teams = FB.refreshDrawAttendance(game.draw.teams, joinedPlayers(game)).teams;
+        game.draw.needsRedraw = false;
+        game.draw.redrawReason = null;
+        game.draw.updatedAt = Date.now();
+      }
+      db.gamesVersion++;
+      save();
+      return send(res, 200, gameView(date, who));
+    }
+
     const rsvp = /^\/game\/(\d{4}-\d{2}-\d{2})\/rsvp$/.exec(route);
     if (rsvp && req.method === "PUT") {
       const who = whoIs(req);
       if (!who) return send(res, 401, { error: "Sign in with your Tsinglan account first." });
+      if (gameSuspended(who.user)) return send(res, 403, { error: "Game sign-ups are unavailable for your account." });
       /* Per person: nobody changes their mind 60 times in ten minutes, but a
          script flipping an answer would rewrite the data file nonstop. */
       if (tooMany("rsvp:" + who.user.id, 60, 10 * 60 * 1000)) {
@@ -1493,8 +1621,8 @@ const server = http.createServer(async (req, res) => {
       const date = rsvp[1];
       if (!isDateString(date) || !sessionKind(date)) return send(res, 400, { error: "There is no game on that day." });
       if (date < clubDate()) return send(res, 400, { error: "That game is over." });
-      if (date === clubDate() && clubMinutes() >= 20 * 60 + 10) {
-        return send(res, 400, { error: "Sign-ups for tonight closed at 20:10." });
+      if (date === clubDate() && clubMinutes() >= 19 * 60 + 55) {
+        return send(res, 400, { error: "Sign-ups for tonight closed at 19:55." });
       }
       if (date > addDays(clubDate(), 1)) return send(res, 400, { error: "Joining opens the day before the session." });
       const body = await readBody(req);
@@ -1539,7 +1667,8 @@ const server = http.createServer(async (req, res) => {
       if (!(n >= 2 && n <= TEAM_LETTERS.length)) {
         return send(res, 400, { error: "Pick between 2 and " + TEAM_LETTERS.length + " teams." });
       }
-      const players = joinedPlayers(game);
+      const preferredTeamsEnabled = body.preferredTeamsEnabled !== false;
+      const players = joinedPlayers(game, preferredTeamsEnabled);
       if (players.length < n) {
         return send(res, 400, { error: players.length + " joined so far - not enough for " + n + " teams." });
       }
@@ -1550,6 +1679,7 @@ const server = http.createServer(async (req, res) => {
       game.draw = {
         at: Date.now(),
         by: who.user.email,
+        preferredTeamsEnabled,
         published: false,
         teams: result.teams.map((t) => t.map((p) => ({
           id: p.id, name: p.name, member: p.member, tier: p.tier, gender: p.gender, position: FB.position(p), teammateGroupId: p.teammateGroupId || null

@@ -375,6 +375,8 @@
     document.body.classList.toggle("is-scrolled", y > 24);
     document.documentElement.style.setProperty("--scroll-kick", Math.max(-1, Math.min(1, (y - lastY) / 36)).toFixed(3));
     lastY = y;
+    // Match Classic wallpaper movement to the published version.
+    document.documentElement.style.setProperty('--wallpaper-y', (-y * .22).toFixed(2) + 'px');
     driftPhotos();
     var trigger = window.innerHeight * 0.88;
     for (var i = pending.length - 1; i >= 0; i--) {

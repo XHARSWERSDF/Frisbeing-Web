@@ -1,4 +1,4 @@
-/* Show account-specific navigation links for signed-in or preview sessions. */
+/* Keep navigation visible; protected pages send guests to account sign-in. */
 (function () {
   "use strict";
 
@@ -43,6 +43,7 @@
   var passionStarBadge = null;
   var supermanUnseen = false;
   var starUnseen = false;
+  var ultraUnseen = false;
   var inviteRequestId = 0;
   var passionRequestId = 0;
   if (accountLink) {
@@ -85,9 +86,19 @@
     document.body.appendChild(passionSimulator);
   }
 
+  if (localDevelopment && window.FBPreview && FBPreview.simulateUltra) {
+    var ultraPreview = document.createElement("button");
+    ultraPreview.type = "button"; ultraPreview.className = "dev-time-toggle dev-ultra-preview";
+    ultraPreview.textContent = "模拟获得超级激情之星";
+    ultraPreview.addEventListener("click", function() {
+      FBPreview.simulateUltra();
+      refreshSimulatedAward();
+    });
+  }
   if (localDevelopment && window.FBPreview && FBPreview.simulateSuperman) {
     var supermanControls = document.createElement("div");
     supermanControls.className = "dev-superman-controls";
+    if (ultraPreview) supermanControls.appendChild(ultraPreview);
     [ ["Simulate Passion Superman", false], ["Simulate losing Top 3", true] ].forEach(function (spec) {
       var button = document.createElement("button");
       button.type = "button";
@@ -124,17 +135,32 @@
     document.body.appendChild(invitationControls);
   }
 
+  if (localDevelopment && window.FBPreview && FBPreview.simulateSuspension) {
+    var suspensionPreview = document.createElement("button");
+    suspensionPreview.type = "button"; suspensionPreview.className = "dev-suspension-preview";
+    suspensionPreview.textContent = "Preview suspended Member";
+    suspensionPreview.addEventListener("click", function() {
+      FBPreview.simulateSuspension(); FBPreview.activate();
+      suspensionPreview.textContent = (FBPreview.user() || {}).gameSuspended ? "Exit suspended Member preview" : "Preview suspended Member";
+      if (window.FBAuth && FBAuth._fire) FBAuth._fire();
+      syncUser(FBPreview.user());
+    });
+    document.body.appendChild(suspensionPreview);
+  }
+  var suspendedFromGames = false;
   function syncUser(user) {
     var active = !!user || !!(window.FBPreview && FBPreview.signedIn && FBPreview.signedIn());
     document.body.classList.toggle("has-user-session", active);
-    if (tools) tools.hidden = !active;
-    if (gameLink) gameLink.hidden = false;
-    if (memberLink) memberLink.hidden = !active;
-    if (!active && /\/(roster|gearhub|profile|fris-off-school)\.html$/.test(location.pathname)) {
+    if (tools) tools.hidden = false;
+    if (!active) suspendedFromGames = false;
+    if (window.FBPreview && FBPreview.active()) suspendedFromGames = !!(FBPreview.user() || {}).gameSuspended;
+    if (gameLink) gameLink.hidden = suspendedFromGames;
+    if (memberLink) memberLink.hidden = false;
+    if (!active && /\/(roster|gearhub|profile)\.html$/.test(location.pathname)) {
       window.location.replace("admin.html");
       return;
     }
-    if (accountLabel) accountLabel.textContent = active ? "My Profile" : "Account";
+    if (accountLabel) accountLabel.textContent = "My Profile";
     refreshInviteBadge(active);
   }
 
@@ -170,6 +196,10 @@
       });
     }
     request.then(function (data) {
+      if (requestId === inviteRequestId && data.account) {
+        suspendedFromGames = data.account.gameSuspended === true;
+        if (gameLink) gameLink.hidden = suspendedFromGames;
+      }
       var pending = !!((data.teammateInvitations || []).length) || (data.teammateInvitationsSent || []).some(function (entry) { return entry.kind === "declined"; });
       if (requestId === inviteRequestId) {
         inviteBadge.hidden = !pending;
@@ -179,9 +209,10 @@
         }
       }
       if (passionRequestId === starRequestId && passionStarBadge) {
+        ultraUnseen = !!(data.passionUltra && data.passionUltra.unseen);
         starUnseen = !!(data.passionStar && data.passionStar.unseen);
         supermanUnseen = !!(data.passionSuperman && data.passionSuperman.unseen);
-        passionStarBadge.hidden = !(starUnseen || supermanUnseen);
+        passionStarBadge.hidden = !(starUnseen || supermanUnseen || ultraUnseen);
       }
     }).catch(function () {
       /* Keep the last known reminder during a temporary connection failure. */
@@ -207,15 +238,19 @@
   function updatePassionStarStatus(unseen) {
     ++passionRequestId;
     starUnseen = !!unseen;
-    if (passionStarBadge) passionStarBadge.hidden = !(starUnseen || supermanUnseen);
+    if (passionStarBadge) passionStarBadge.hidden = !(starUnseen || supermanUnseen || ultraUnseen);
   }
 
   window.FBNav = window.FBNav || {};
+  window.FBNav.updateUltraStatus = function(unseen) {
+    ultraUnseen = !!unseen;
+    if (passionStarBadge) passionStarBadge.hidden = !(starUnseen || supermanUnseen || ultraUnseen);
+  };
   window.FBNav.updateInviteStatus = updateInviteStatus;
   window.FBNav.updatePassionStarStatus = updatePassionStarStatus;
   window.FBNav.updateSupermanStatus = function (unseen) {
     supermanUnseen = !!unseen;
-    if (passionStarBadge) passionStarBadge.hidden = !(starUnseen || supermanUnseen);
+    if (passionStarBadge) passionStarBadge.hidden = !(starUnseen || supermanUnseen || ultraUnseen);
   };
   window.FBNav.refresh = function () { syncUser(window.FBAuth && FBAuth.user()); };
   if (accountLink) accountLink.addEventListener("click", function () {

@@ -22,17 +22,25 @@
     window.location.assign(path || "sort.html");
   }
   function signedIn() { return enabled() && role() !== "guest"; }
-  function user() { return !signedIn() ? null : { name: "Preview " + labels[role()], email: "preview-" + emailNames[role()] + "@tsinglan.org", member: demoMembers[role()], role: role(), attendanceCount: 0 }; }
+  function signupGrade(value) {
+    if (/^ms$/i.test(String(value || "").trim())) return "MS";
+    var grade=String(value || "").trim().replace(/^(?:grade|g)\s*/i, "").replace(/\s+/g, "");
+    return /^(?:[1-9]|1[0-2])$/.test(grade) ? "G"+grade : null;
+  }
+  function isSuspended(account) { return !!account && account.role === "player" && account.gameSuspended === true; }
+  function user() { return !signedIn() ? null : { name: "Preview " + labels[role()], email: "preview-" + emailNames[role()] + "@tsinglan.org", member: demoMembers[role()], role: role(), gameSuspended: isSuspended(getData().accounts.find(function(a) { return a.id === role(); })), attendanceCount: 0 }; }
   function dateAt(offset) {
     var today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
     var d = new Date(today + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + offset);
     return d.toISOString().slice(0, 10);
   }
+  var sessionTimeOverride = null;
   function beforeSessionCutoff() {
+    if (sessionTimeOverride) return sessionTimeOverride === "before";
     var parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Shanghai", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date());
     var hour = Number(parts.find(function (part) { return part.type === "hour"; }).value);
     var minute = Number(parts.find(function (part) { return part.type === "minute"; }).value);
-    return hour * 60 + minute < 20 * 60 + 10;
+    return hour * 60 + minute < 19 * 60 + 55;
   }
   function previewNorm(value) { return String(value || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ""); }
   var data;
@@ -110,12 +118,13 @@
     return d.added.indexOf(date) >= 0 ? "extra" : null;
   }
   function game(date) { var d = getData(); return d.games[date] || (d.games[date] = { joined: [], passed: [], draw: null }); }
-  function drawingPlayers(g) {
+  function drawingPlayers(g, preferredTeamsEnabled) {
+    if (preferredTeamsEnabled === undefined) preferredTeamsEnabled = !g.draw || g.draw.preferredTeamsEnabled !== false;
     return g.joined.map(function (player) {
       var group = getData().teammateGroups.find(function (entry) {
         return entry.members.some(function (member) { return previewNorm(member.name) === previewNorm(player.member || player.name); });
       });
-      return Object.assign({}, player, { teammateGroupId: group ? group.id : null });
+      return Object.assign({}, player, { teammateGroupId: preferredTeamsEnabled && group ? group.id : null });
     });
   }
   function view(date) {
@@ -125,11 +134,20 @@
     var manages = role() === "admin" || role() === "leader";
     var published = !!g.draw && g.draw.published !== false;
     var v = { date: date, today: dateAt(0), tz: "Asia/Shanghai", kind: k, isGame: !!k, signedIn: signedIn(), role: role(), games: data.version,
-      canJoin: !!k && date >= dateAt(0) && date <= dateAt(1) && (date !== dateAt(0) || beforeSessionCutoff()), participants: g.joined.map(function (p) { return { name: p.name }; }),
+      gameSuspended: isSuspended(user()), canJoin: !isSuspended(user()) && !!k && date >= dateAt(0) && date <= dateAt(1) && (date !== dateAt(0) || beforeSessionCutoff()), participants: signedIn() ? g.joined.map(function (p) { return { name: p.name }; }) : [],
       me: { rsvp: g.joined.some(function (p) { return p.id === id; }) ? "in" : g.passed.some(function (p) { return p.id === id; }) ? "out" : null }, drawn: published,
       hasDraft: !!g.draw && !published && manages };
+    v.serverNow = Date.now();
+    v.signupClosesAt = Date.parse(date + 'T19:55:00+08:00');
+    v.nextSignup = null;
+    for (var offset = 0; offset <= 366; offset++) {
+      var nextDate = dateAt(offset), closesAt = Date.parse(nextDate + 'T19:55:00+08:00');
+      if (kind(nextDate) && closesAt > Date.now()) { v.nextSignup = { date: nextDate, closesAt: closesAt }; break; }
+    }
+    v.friendSignups = g.joined.filter(function(p) { return p.temporaryPlayer && p.ownerEmail === (user() || {}).email; }).map(function(p) { return { id: p.id, name: p.name }; });
     if (manages) {
-      v.joined = g.joined; v.passed = g.passed;
+      v.preferredTeamsEnabled = !g.draw || g.draw.preferredTeamsEnabled !== false;
+      v.joined = drawingPlayers(g); v.passed = g.passed;
       if (g.draw) {
         var currentGroups = new Map(drawingPlayers(g).map(function (player) { return [player.id, player.teammateGroupId || null]; }));
         v.teams = g.draw.teams.map(function (team) { return team.map(function (player) {
@@ -208,7 +226,7 @@
     return Promise.resolve().then(function () {
       var d = getData(), url = new URL(path, "https://preview.invalid"), route = url.pathname, result;
       if (method !== "GET" && role() === "guest") throw new Error("Sign in to use this action.");
-      if (method !== "GET" && (role() === "player" || role() === "guest") && !/\/rsvp$/.test(route) && route !== "/me/gear-bag" && route !== "/me/preferences" && route !== "/feedback" && route !== "/me/passion-star/seen" && route !== "/me/passion-superman/seen" && route.indexOf("/me/teammate-invitations") !== 0 && route.indexOf("/me/teammate-group") !== 0) throw new Error("Switch to Admin or Admin Manager preview to use this control.");
+      if (method !== "GET" && (role() === "player" || role() === "guest") && !/^\/game\/\d{4}-\d{2}-\d{2}\/friends$/.test(route) && !/\/rsvp$/.test(route) && route !== "/me/gear-bag" && route !== "/me/preferences" && route !== "/feedback" && route !== "/me/passion-ultra/seen" && route !== "/me/passion-star/seen" && route !== "/me/passion-superman/seen" && route.indexOf("/me/teammate-invitations") !== 0 && route.indexOf("/me/teammate-group") !== 0) throw new Error("Switch to Admin or Admin Manager preview to use this control.");
       if (route === "/feedback" && method === "POST") {
         var message = typeof (body && body.message) === "string" ? body.message.trim() : "";
         if (!message || message.length > 4000) throw new Error("Write feedback between 1 and 4,000 characters.");
@@ -219,6 +237,19 @@
       if (route === "/feedback" && method === "GET") {
         if (role() !== "admin" && role() !== "leader") throw new Error("Only Admin and Admin Manager accounts can view feedback.");
         return { feedback: (d.feedback || []).map(function (entry) { return { id: entry.id, message: entry.message, createdAt: entry.createdAt }; }).reverse() };
+      }
+      if (route === "/game-suspension" && method === "PUT") {
+        if (role() !== "admin" && role() !== "leader") throw new Error("Admin preview required.");
+        var target = d.accounts.find(function(a) { return previewNorm(a.member) === previewNorm(body.name); });
+        if (!target || target.role !== "player" || typeof body.suspended !== "boolean") throw new Error("Choose a Member account and a suspension status.");
+        target.gameSuspended = body.suspended;
+        if (body.suspended) Object.keys(d.games).forEach(function(date) {
+          if (date < dateAt(0)) return;
+          var g = game(date);
+          g.joined = g.joined.filter(function(p) { return previewNorm(p.member || p.name) !== previewNorm(target.member); });
+          if (g.draw) g.draw.teams = FB.refreshDrawAttendance(g.draw.teams, drawingPlayers(g)).teams;
+        });
+        d.version++; persist(); return { name: target.member, gameSuspended: isSuspended(target) };
       }
       if (route === "/roster-attendance" && method === "PUT") {
         var member = d.roster.find(function (entry) { return previewNorm(entry.name) === previewNorm(body.name); });
@@ -233,7 +264,7 @@
         if (role() !== "admin" && role() !== "leader") throw new Error("Admin preview required.");
         return { members: d.roster.map(function (member) {
           var account = d.accounts.find(function (entry) { return entry.member && previewNorm(entry.member) === previewNorm(member.name); });
-          return { name: member.name, attendanceCount: Math.max(0, Number(account && account.attendanceCount) || 0), walkInCount: Math.max(0, Number((d.walkInCounts || {})[previewNorm(member.name)]) || 0) };
+          return { name: member.name, attendanceFrequency: account ? previewFrequencies(d)[account.id] : null, canSuspend: !!account && account.role === "player", gameSuspended: isSuspended(account), attendanceCount: Math.max(0, Number(account && account.attendanceCount) || 0), walkInCount: Math.max(0, Number((d.walkInCounts || {})[previewNorm(member.name)]) || 0) };
         }) };
       }
       if (route === "/version") return { version: d.version, games: d.version };
@@ -322,34 +353,32 @@
         if (!signedIn()) throw new Error("This preview visitor is signed out.");
         var current = user(), group = groupFor(current.email);
         var storedAccount = d.accounts.find(function (entry) { return entry.id === role(); });
-        if (storedAccount && Number(storedAccount.attendanceCount) >= 5 && !storedAccount.passionStarUnlockedAt) {
-          storedAccount.passionStarUnlockedAt = Date.now();
-          persist();
-        }
-        var superman = FBAttendanceAwards.reconcile(d.roster, d.accounts);
+        var personal = FBAttendanceAwards.reconcilePersonal(storedAccount, Number(storedAccount.previewStreak) || 0);
+        if (personal.changed) persist();
+        var superman = FBAttendanceAwards.reconcile(d.roster, d.accounts, Date.now(), previewFrequencies(d));
         if (superman.changed) persist();
-        var star = storedAccount && storedAccount.passionStarUnlockedAt;
-        return { role: role(), account: Object.assign({}, current, { attendanceCount: Number(storedAccount && storedAccount.attendanceCount) || 0, preferredTeammates: (d.preferredTeammates && d.preferredTeammates[role()]) || [] }),
+        return { role: role(), account: Object.assign({}, current, { attendanceFrequency: previewFrequencies(d)[role()], attendanceCount: Number(storedAccount && storedAccount.attendanceCount) || 0, preferredTeammates: (d.preferredTeammates && d.preferredTeammates[role()]) || [] }),
           passionSuperman: superman.states[role()],
-          passionStar: { unlocked: !!star, unseen: !!star && !storedAccount.passionStarSeenAt, unlockedAt: star || null, seenAt: storedAccount && storedAccount.passionStarSeenAt || null, currentStreak: 0 },
+          passionStar: personal.star, passionUltra: personal.ultra,
           teammateGroup: teammateGroupView(group, current.email), teammateInvitations: teammateInvitationsFor(current.member), teammateInvitationsSent: teammateInvitationsSentBy(current.email) };
       }
       if (route === "/me/passion-superman/seen" && method === "POST") {
         if (!signedIn()) throw new Error("Sign in to view your award.");
-        var awards = FBAttendanceAwards.reconcile(d.roster, d.accounts);
+        var awards = FBAttendanceAwards.reconcile(d.roster, d.accounts, Date.now(), previewFrequencies(d));
         var award = awards.states[role()];
         if (!award || !award.unlocked) throw new Error("This award belongs to the current attendance top three.");
         d.accounts.find(function (account) { return account.id === role(); }).passionSupermanSeenAt = Date.now();
         persist();
         return {seen:true, alreadySeen:!award.unseen};
       }
-      if (route === "/me/passion-star/seen" && method === "POST") {
+      if ((route === "/me/passion-star/seen" || route === "/me/passion-ultra/seen") && method === "POST") {
         if (!signedIn()) throw new Error("Sign in to view your award.");
-        var awardAccount = d.accounts.find(function (entry) { return entry.id === role(); });
-        if (!awardAccount || !awardAccount.passionStarUnlockedAt) throw new Error("The Passion Star has not been unlocked yet.");
-        var awardAlreadySeen = !!awardAccount.passionStarSeenAt;
-        if (!awardAlreadySeen) { awardAccount.passionStarSeenAt = Date.now(); persist(); }
-        return { seen: true, alreadySeen: awardAlreadySeen };
+        var awardAccount = d.accounts.find(function(a) { return a.id === role(); });
+        var personalAward = FBAttendanceAwards.reconcilePersonal(awardAccount, Number(awardAccount.previewStreak) || 0);
+        var ultra = route === "/me/passion-ultra/seen", state = ultra ? personalAward.ultra : personalAward.star;
+        if (!state.unlocked) throw new Error("This award has not been unlocked yet.");
+        awardAccount[ultra ? "passionUltraSeenAt" : "passionStarSeenAt"] = Date.now(); persist();
+        return { seen: true, alreadySeen: !state.unseen };
       }
       if (route === "/me/preferences" && method === "PUT") {
         var requested = body && body.preferredTeammates;
@@ -407,6 +436,17 @@
         persist();
         return { teammateGroup: teammateGroupView(groupFor(captain.email), captain.email), teammateInvitations: teammateInvitationsFor(captain.member),
           teammateInvitationsSent: teammateInvitationsSentBy(captain.email) };
+      }
+      var cancelInvitation = /^\/me\/teammate-invitations\/([^/]+)\/cancel$/.exec(route);
+      if (cancelInvitation && method === "POST") {
+        if (!signedIn()) throw new Error("Not signed in.");
+        var pending = d.teammateInvitations.find(function (entry) { return entry.id === cancelInvitation[1] && entry.fromUserId === user().email && entry.status === "pending"; });
+        if (!pending) throw new Error("That invitation is no longer pending. Refresh to see the latest team.");
+        pending.status = "cancelled";
+        pending.respondedAt = Date.now();
+        if (d.preferredTeammates) d.preferredTeammates[role()] = (d.preferredTeammates[role()] || []).filter(function (name) { return previewNorm(name) !== previewNorm(pending.toMember); });
+        persist();
+        return { ok: true };
       }
       var dismissInvitation = /^\/me\/teammate-invitations\/([^/]+)\/dismiss$/.exec(route);
       if (dismissInvitation && method === "POST") {
@@ -467,8 +507,54 @@
         var selected = url.searchParams.get("date"), v = view(selected || dateAt(0)); if (!selected) v.upcoming = view(dateAt(1)); return v;
       } else if (/^\/game\/\d{4}-\d{2}-\d{2}\//.test(route)) {
         var date = route.split("/")[2], action = route.split("/")[3], g = game(date), id = "preview-" + role();
-        if (action === "rsvp") {
-          if (date === dateAt(0) && !beforeSessionCutoff()) throw new Error("Sign-ups for tonight closed at 20:10.");
+        if (action === "friends") {
+          if (!signedIn()) throw new Error("Sign in first.");
+          if (isSuspended(user())) throw new Error("Game sign-ups are unavailable for your account.");
+          var friendView = view(date), me = user();
+          if (!friendView.canJoin) throw new Error("Sign-ups are closed for this session.");
+          if (friendView.me.rsvp !== "in") throw new Error("Join this session before signing up a friend.");
+          if (method === "GET") return { friends: d.accounts.filter(function(a) { return a.email !== me.email && !isSuspended(a) && !g.joined.some(function(p) { return previewNorm(p.member || p.name) === previewNorm(a.member || a.name); }); }).map(function(a) { return { id: a.id, name: a.name }; }) };
+          if (method === "DELETE") {
+            var guest = g.joined.find(function(p) { return p.id === body.id && p.temporaryPlayer && p.ownerEmail === me.email; });
+            if (!guest) throw new Error("You can only remove temporary players you added.");
+            g.joined = g.joined.filter(function(p) { return p.id !== body.id; });
+          } else if (body.userId || Array.isArray(body.userIds)) {
+            var ids = Array.from(new Set(Array.isArray(body.userIds) ? body.userIds : [body.userId]));
+            var accounts = ids.map(function(id) { return d.accounts.find(function(a) { return a.id === id && a.email !== me.email; }); });
+            if (!ids.length || accounts.some(function(a) { return !a; })) throw new Error("Choose friends' accounts.");
+            if (accounts.some(isSuspended)) throw new Error("A selected account is suspended from games.");
+            if (accounts.some(function(a) { return g.joined.some(function(p) { return previewNorm(p.member || p.name) === previewNorm(a.member || a.name); }); })) throw new Error("A selected friend has already joined.");
+            accounts.forEach(function(account) {
+              var entry = d.roster.find(function(p) { return previewNorm(p.name) === previewNorm(account.member); });
+              g.passed = g.passed.filter(function(p) { return previewNorm(p.member || p.name) !== previewNorm(account.member || account.name); });
+              g.joined.push(Object.assign({}, entry, account, { id: "preview-" + account.id, tier: entry ? entry.tier : "U", position: FB.position(entry) }));
+            });
+          } else {
+            var name = typeof (body.fullName || body.name) === "string" ? (body.fullName || body.name).trim().replace(/\s+/g, " ") : "";
+            var grade = signupGrade(body.grade);
+            if (!grade) throw new Error("Choose a grade: MS, G9, G10, G11 or G12.");
+            if (!name || name.length > 80) throw new Error("Enter a full name of 1–80 characters.");
+            var named = d.accounts.filter(function(a) { return [a.fullName,a.member || a.name].filter(Boolean).some(function(n) { return previewNorm(n) === previewNorm(name); }); });
+            var matches = named.filter(function(a) { return signupGrade(a.grade) === grade; });
+            if (matches.length > 1) throw new Error("More than one account matches. Choose the account from the list.");
+            if (matches.length === 1) {
+              var account = matches[0];
+              if (isSuspended(account)) throw new Error("This account is suspended from games.");
+              if (g.joined.some(function(p) { return previewNorm(p.member || p.name) === previewNorm(account.member || account.name); })) throw new Error("This player has already joined.");
+              var entry = d.roster.find(function(p) { return previewNorm(p.name) === previewNorm(account.member); });
+              g.passed = g.passed.filter(function(p) { return previewNorm(p.member || p.name) !== previewNorm(account.member || account.name); });
+              g.joined.push(Object.assign({}, entry, account, { id: "preview-" + account.id, tier: entry ? entry.tier : "U", position: FB.position(entry) }));
+            } else {
+              if (named.length) throw new Error("The name belongs to an existing account. Check the grade or choose the account from the list.");
+              if (g.joined.some(function(p) { return previewNorm(p.name) === previewNorm(name) && (!p.grade || p.grade === grade); })) throw new Error("This player has already joined.");
+              if (friendView.friendSignups.length >= 2) throw new Error("You can sign up at most two temporary players per session.");
+              g.joined.push({ id: "guest-" + Date.now() + "-" + Math.random().toString(36).slice(2), name: name, grade: grade, tier: "B", position: "c", gender: "", temporaryPlayer: true, ownerEmail: me.email });
+            }
+          }
+          if (g.draw) { g.draw.teams = FB.refreshDrawAttendance(g.draw.teams, drawingPlayers(g)).teams; g.draw.needsRedraw = false; g.draw.redrawReason = null; }
+        } else if (action === "rsvp") {
+          if (isSuspended(user())) throw new Error("Game sign-ups are unavailable for your account.");
+          if (date === dateAt(0) && !beforeSessionCutoff()) throw new Error("Sign-ups for tonight closed at 19:55.");
           var currentUser = user(), rosterEntry = d.roster.find(function (p) { return previewNorm(p.name) === previewNorm(currentUser.member); });
           var previousEntry = g.joined.concat(g.passed).find(function (p) { return previewNorm(p.member || p.name) === previewNorm(currentUser.member); });
           if (previousEntry) id = previousEntry.id;
@@ -481,7 +567,7 @@
           }
         } else if (action === "draw") {
           if (method === "DELETE") g.draw = null;
-          else { var sorted = FB.sort(drawingPlayers(g), "fair", body.n); if (sorted.error) throw new Error(sorted.error); g.draw = { at: Date.now(), published: false, teams: sorted.teams }; }
+          else { var sorted = FB.sort(drawingPlayers(g, body.preferredTeamsEnabled !== false), "fair", body.n); if (sorted.error) throw new Error(sorted.error); g.draw = { at: Date.now(), preferredTeamsEnabled: body.preferredTeamsEnabled !== false, published: false, teams: sorted.teams }; }
         } else if (action === "publish" && method === "POST") {
           if (!g.draw) throw new Error("Draw teams before publishing.");
           if (g.draw.published !== false) throw new Error("These teams are already published.");
@@ -564,7 +650,7 @@
     d.teammateGroups = d.teammateGroups.filter(function (group) { return !group.demo; });
     var currentAccount = d.accounts.find(function (account) { return account.id === role(); });
     if (kind === "passion-star" && currentAccount) {
-      currentAccount.attendanceCount = 5;
+      currentAccount.attendanceCount = 8;
       currentAccount.passionStarUnlockedAt = Date.now();
       delete currentAccount.passionStarSeenAt;
     } else if (kind === "reset" && currentAccount) {
@@ -610,14 +696,26 @@
     d.version++;
     persist();
   }
+  function previewFrequencies(d) {
+    var games = {};
+    Object.keys(d.games).forEach(function(date) {
+      games[date] = { attendance: d.accounts.filter(function(a) {
+        return (d.games[date].joined || []).some(function(p) { return previewNorm(p.member || p.name) === previewNorm(a.member || a.name); });
+      }).map(function(a) { return a.id; }) };
+    });
+    var frequencies = FBAttendanceAwards.frequencyStats(d.accounts, { since: d.frequencySince || Object.keys(d.games).sort()[0] || dateAt(0), weekdays: [2,4], added: d.added, removed: d.removed }, games);
+    d.accounts.forEach(function(a) { if (a.previewFrequency) frequencies[a.id] = Object.assign({}, a.previewFrequency, {rate: a.previewFrequency.total ? a.previewFrequency.joined/a.previewFrequency.total : 0}); });
+    return frequencies;
+  }
   function simulateSuperman(lose) {
     if (!signedIn()) { localStorage.setItem(KEY, "1"); localStorage.setItem(ROLE, "player"); }
     var d = getData(), me = d.accounts.find(function (account) { return account.id === role(); });
-    var highest = Math.max(0,...d.accounts.map(function (account) { return Number(account.attendanceCount) || 0; }));
     if (!lose) {
-      me.attendanceCount = highest + 10;
+      me.previewFrequency = {joined:10,total:10};
+      d.accounts.forEach(function(a) { if (a.id.indexOf("demo-superman-rival-") === 0) a.previewFrequency = {joined:1,total:2}; });
       delete me.passionSupermanSeenAt;
     } else {
+      me.previewFrequency = {joined:5,total:10};
       for (var i=1; i<=3; i++) {
         var id = "demo-superman-rival-"+i;
         var rival = d.accounts.find(function (account) { return account.id === id; });
@@ -626,17 +724,45 @@
           d.accounts.push(rival);
           d.roster.push({name:rival.member,tier:"I",gender:"",position:"c"});
         }
-        rival.attendanceCount = highest + i;
+        rival.previewFrequency = {joined:20+i,total:20+i};
       }
     }
-    FBAttendanceAwards.reconcile(d.roster,d.accounts);
+    FBAttendanceAwards.reconcile(d.roster,d.accounts,Date.now(),previewFrequencies(d));
     d.version++;
     persist();
+  }
+  function simulateFriends() {
+    if (!signedIn()) { localStorage.setItem(KEY, "1"); localStorage.setItem(ROLE, "player"); }
+    var d = getData(), date = dateAt(0), me = user();
+    d.removed = d.removed.filter(function(x) { return x !== date; });
+    if (d.added.indexOf(date) < 0) d.added.push(date);
+    var g = game(date), entry = d.roster.find(function(p) { return previewNorm(p.name) === previewNorm(me.member); });
+    if (!g.joined.some(function(p) { return previewNorm(p.member || p.name) === previewNorm(me.member); })) g.joined.push(Object.assign({}, entry, me, { id: "preview-" + role() }));
+    g.passed = g.passed.filter(function(p) { return previewNorm(p.member || p.name) !== previewNorm(me.member); });
+    if (!d.accounts.some(function(a) { return a.id === "friend-demo"; })) {
+      d.accounts.push({ id: "friend-demo", name: "Demo Friend", fullName: "Demo Friend", grade: "G11", member: "Demo Friend", email: "demo-friend@tsinglan.org", role: "player" });
+      d.roster.push({ name: "Demo Friend", tier: "I", position: "c", gender: "" });
+    }
+    d.version++; persist();
   }
   function hasSessionPair() {
     return enabled() && getData().teammateGroups.some(function (group) { return group.demoSessionPair; });
   }
   window.FBPreview = { active: enabled, signedIn: signedIn, enable: enable, stop: stop, user: user, role: role, request: request,
+    simulateUltra: function() {
+      if (!signedIn()) { localStorage.setItem(KEY, "1"); localStorage.setItem(ROLE, "player"); }
+      var d = getData(), account = d.accounts.find(function(a) { return a.id === role(); });
+      account.attendanceCount = Math.max(20, Number(account.attendanceCount) || 0);
+      FBAttendanceAwards.reconcilePersonal(account, Number(account.previewStreak) || 0);
+      account.passionStarSeenAt = Date.now();
+      delete account.passionUltraSeenAt; d.version++; persist();
+    },
+    simulateSuspension: function() {
+      localStorage.setItem(KEY, "1"); localStorage.setItem(ROLE, "player");
+      var d = getData(), account = d.accounts.find(function(a) { return a.id === "player"; });
+      account.gameSuspended = !account.gameSuspended; d.version++; persist();
+    },
+    simulateFriends: simulateFriends, setSessionTime: function(value) { sessionTimeOverride = value; },
     simulateTeammates: simulateTeammates, hasSessionPair: hasSessionPair, simulateSignups: simulateSignups, simulateSuperman: simulateSuperman, activate: activate };
   function activate() {
     if (!enabled()) return;
