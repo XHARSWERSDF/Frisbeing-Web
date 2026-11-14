@@ -6,7 +6,7 @@ const vm = require('node:vm');
 
 test('published hosts cannot create or activate local preview modes, even with stored preview state', () => {
   const script = fs.readFileSync(path.join(__dirname, '../assets/preview-mode.js'), 'utf8');
-  for (const hostname of ['frisbeing.com', 'www.frisbeing.com', 'release.example.com']) {
+  for (const hostname of ['frisbeing.com', 'www.frisbeing.com', 'release.example.com', 'localhost.example.com', '127.0.0.1.example.com', 'xharswersdf.github.io']) {
     const stored = new Map([['frisbeing.ui-preview.v1', '1'], ['frisbeing.ui-preview.role', 'leader']]);
     const context = {
       location: { protocol: 'https:', hostname },
@@ -17,4 +17,15 @@ test('published hosts cannot create or activate local preview modes, even with s
     assert.equal(context.FBPreview, undefined);
     assert.equal(stored.size, 0);
   }
+});
+
+test('production preview stays disabled when browser storage is unavailable', () => {
+  const script = fs.readFileSync(path.join(__dirname, '../assets/preview-mode.js'), 'utf8');
+  const context = {
+    location: { protocol: 'https:', hostname: 'frisbeing.com' },
+    localStorage: { removeItem() { throw new Error('Storage blocked'); } },
+    document: { getElementById() { assert.fail('Production must not create preview controls'); } }
+  };
+  vm.runInNewContext(script, context);
+  assert.equal(context.FBPreview, undefined);
 });

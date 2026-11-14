@@ -337,7 +337,7 @@ without an age-based purge. Admins can select an earlier date in Game and drag
 members between the saved teams. Editing a past/finalized session preserves its
 publication state and does not send new team notifications.
 
-Signed-in members who have joined can use `GET /game/:date/friends` for available account names and IDs, then `POST` with `{ userId }` to sign up that account or `{ fullName, grade }` for a temporary T3 Cutter. Temporary guests belong only to this session; the creator may remove them with `DELETE` and `{ id }`. Existing accounts keep their roster tier, teammate group, attendance credit, and ability to change their own RSVP. These routes use the normal signup window.
+Signed-in members who have joined can use `GET /game/:date/friends` for available account names and IDs, then `POST` with `{ userId }` to sign up that account or `{ fullName, grade }` for a temporary T3 Cutter. Temporary guests belong only to this session; the creator may remove them with `DELETE` and `{ id }`. Existing accounts keep their roster tier, teammate group, attendance credit, and ability to change their own RSVP. These friend signup routes are available only on the session day before 19:55 China time; signing yourself up a day ahead remains available.
 
 Each member may have at most two temporary guests per session. Removing one frees a slot. Signing up existing accounts has no headcount cap.
 
@@ -352,3 +352,5 @@ Participation frequency is `joined / total`: completed, non-cancelled scheduled 
 No-account signup requires Grade and Full name. Grades accept 11, G11 or Grade 11. An exact normalized name and grade match signs up the existing account, preserving its tier and suspension rules without consuming a temporary guest slot. Ambiguous matches or existing names with a different or missing grade must use the account picker. Unmatched players use a temporary T3 slot.
 
 Account friend signups expose `accountFriendSignups` to their sponsor, separately from temporary guests. DELETE `/game/:date/friends` accepts the sponsored account ID to cancel its RSVP before cutoff. Only the original sponsor may remove it; a friend who leaves and rejoins independently takes control of their own signup. The sponsor leaving does not cancel their friends.
+
+Admin draw requests accept `separatePairs: [[playerId, playerId], ...]` for distinct currently joined players. The fair search enforces these pairs alongside team size, Index, Tier and Preferred Teammate rules; conflicting constraints fail without replacing the existing draw. Rules are stored with the draw and returned only in the admin view. Manual moves cannot put a restricted pair together.

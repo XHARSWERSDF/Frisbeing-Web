@@ -405,6 +405,11 @@
     return { teams: candidate, movedIds: moving.map(function (p) { return p.id; }) };
   };
 
+  FB.canShareTeam = function (players) {
+    var ids = new Set(players.map(function(p) { return p.id; }));
+    return !players.some(function(p) { return (p.separateFrom || []).some(function(id) { return ids.has(id); }); });
+  };
+
   // Retain existing assignments and automatically place new arrivals.
   // Late arrivals are highlighted until a fresh draw replaces this snapshot.
   FB.refreshDrawAttendance = function (teams, players) {
@@ -419,7 +424,9 @@
         return team.some(function (p) { return p.teammateGroupId === unit[0].teammateGroupId; });
       });
       var target = typeof existing === "number" && existing >= 0 ? existing : -1, bestCost = Infinity;
+      if (target >= 0 && !FB.canShareTeam(candidate[target].concat(unit))) target = -1;
       if (target < 0) candidate.forEach(function (team, i) {
+        if (!FB.canShareTeam(team.concat(unit))) return;
         team.push.apply(team, unit);
         var balance = FB.drawBalance(candidate);
         var cost = balance.sizeGap * balance.sizeGap + balance.frisGap * balance.frisGap / 4 + balance.tierGaps.reduce(function (sum, gap) { return sum + gap * gap; }, 0);
@@ -623,6 +630,7 @@
      headcount jointly; positions only break ties. Gender is not an input. */
   FB.fairDraft = function (players, n, options) {
     options = options || {};
+    var hasSeparations = players.some(function(p) { return (p.separateFrom || []).length; });
     var total = players.length, minSize = Math.floor(total / n), maxSize = Math.ceil(total / n);
     var units = shuffle(FB.attendanceUnits(players).map(function (members) {
       var c = counts(members);
@@ -630,8 +638,8 @@
         base: members.reduce(function (sum, p) { return sum + (FB.WEIGHT[p.tier] || FB.WEIGHT.U); }, 0),
         tiers: FB.TIERS.map(function (tier) { return c[tier]; }), positions: [c.h, c.c] };
     })).sort(function (a, b) { return b.size - a.size || b.base - a.base; });
-    if (units.some(function (unit) { return unit.size > maxSize; })) {
-      return { code: "DRAW_CONSTRAINTS", error: "Attending teammates cannot fit together while keeping team sizes within 1. Choose fewer teams or adjust attendance." };
+    if (units.some(function (unit) { return unit.size > maxSize || !FB.canShareTeam(unit.members); })) {
+      return { code: "DRAW_CONSTRAINTS", error: "Preferred teammates or separate-team rules conflict with the team sizes. Choose fewer teams or adjust attendance." };
     }
     var targets = Array.from({ length: n }, function (_, i) { return minSize + (i < total % n ? 1 : 0); });
     var teams = targets.map(function () { return { units: [], size: 0, base: 0, tiers: [0, 0, 0, 0], positions: [0, 0] }; });
@@ -655,7 +663,7 @@
       return [joint, positions];
     }
     function better(a, b) { return !b || a[0] < b[0] || (a[0] === b[0] && a[1] < b[1]); }
-    function signature(team, i) { return [targets[i], team.size, team.base].concat(team.tiers, team.positions).join(","); }
+    function signature(team, i) { return [targets[i], team.size, team.base].concat(team.tiers, team.positions, hasSeparations ? team.units.reduce(function(ids,u) { return ids.concat(u.members.map(function(p) { return p.id; })); }, []).sort() : []).join(","); }
     var best = null, bestMetric = null, nodes = 0, limit = options.maxNodes || 200000, visited = new Set();
     function lowerBound(at) {
       var bound = 0;
@@ -689,7 +697,7 @@
       if (visited.has(key)) return;
       visited.add(key);
       var unit = units[at], seen = new Set();
-      var order = shuffle(teams.map(function (_, i) { return i; })).filter(function (i) { return teams[i].size + unit.size <= targets[i]; });
+      var order = shuffle(teams.map(function (_, i) { return i; })).filter(function (i) { return teams[i].size + unit.size <= targets[i] && FB.canShareTeam(unit.members.concat(teams[i].units.reduce(function(m,u) { return m.concat(u.members); }, []))); });
       var costs = {};
       order.forEach(function (i) { add(teams[i], unit, 1); costs[i] = metric(); add(teams[i], unit, -1); });
       order.sort(function (a, b) { return costs[a][0] - costs[b][0] || costs[a][1] - costs[b][1]; });
@@ -705,7 +713,7 @@
     search(0);
     if (!best) return { code: nodes >= limit ? "DRAW_SEARCH_LIMIT" : "DRAW_CONSTRAINTS", error: nodes >= limit
       ? "Could not find a valid draw. Try again or choose fewer teams."
-      : "No draw can keep attending teammates together, keep total team sizes within 1, and keep the Fris Index gap within 2. Change the team count or attendance." };
+      : "No draw can satisfy Preferred Teammate and separate-team rules, keep total team sizes within 1, and keep the Fris Index gap within 2. Change the team count or attendance." };
     var result = shuffle(best);
     return { teams: result, balance: FB.drawBalance(result), searchNodes: nodes };
   };

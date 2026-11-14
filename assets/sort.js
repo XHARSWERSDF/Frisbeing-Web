@@ -282,7 +282,7 @@
 
   var friendPanels = Object.create(null);
   function friendsHtml(v) {
-    if (!v || v.gameSuspended || !v.canJoin || sessionStarted(v) || !v.me || v.me.rsvp !== 'in') return '';
+    if (!v || v.date !== v.today || v.gameSuspended || !v.canJoin || sessionStarted(v) || !v.me || v.me.rsvp !== 'in') return '';
     var count = (v.friendSignups || []).length;
     var panels = friendPanels[v.date] || {};
     return '<section class="friend-signup"><details class="friend-panel" data-friend-panel="accounts" data-date="' + esc(v.date) + '"' + (panels.accounts ? ' open' : '') + '><summary aria-label="Sign up for friend"><span>Sign up for friend</span></summary><div class="friend-panel-body"><button class="btn" type="button" data-act="friend-open"><span>Choose friends</span></button>' +
@@ -978,6 +978,13 @@
     return joined + " joined → " + sizes.join(" / ") + " per team";
   }
 
+  var separateChoices = Object.create(null);
+  function separatePairs(v) { return separateChoices[v.date] || v.separatePairs || []; }
+  function separationHtml(v) {
+    var people = v.joined || [], pairs = separatePairs(v);
+    var options = '<option value="">Choose player</option>' + people.map(function(p) { return '<option value="' + esc(p.id) + '">' + esc(p.name) + '</option>'; }).join('');
+    return '<div class="separate-teams"><h4>不同队</h4><div class="separate-controls"><select aria-label="First player" data-separate-first>' + options + '</select><select aria-label="Keep separate from" data-separate-second>' + options + '</select><button type="button" data-act="separate-add">Add</button></div><ul>' + pairs.map(function(pair, i) { return '<li>' + pair.map(function(id) { var p = people.find(function(p) { return p.id === id; }); return esc(p ? p.name : 'Not attending'); }).join(' / ') + ' <button type="button" data-act="separate-remove" data-pair="' + i + '">Remove</button></li>'; }).join('') + '</ul><p class="separate-error" role="status"></p></div>';
+  }
   var preferredTeamChoices = Object.create(null);
   function preferredTeamsEnabled(v) { return Object.prototype.hasOwnProperty.call(preferredTeamChoices, v.date) ? preferredTeamChoices[v.date] : v.preferredTeamsEnabled !== false; }
   function drawZoneHtml(v) {
@@ -1005,6 +1012,7 @@
     });
     h += '</div>';
     h += '<button type="button" class="preferred-team-toggle" data-act="preferred-team-toggle" role="switch" aria-checked="' + preferredTeamsEnabled(v) + '"><span>Preferred Teammate</span><span class="preferred-team-track" aria-hidden="true"></span></button>';
+    h += separationHtml(v);
     h += '<p class="tn-error" id="drawError"></p>';
 
     if (hasTeams && v.teams) {
@@ -1090,7 +1098,7 @@
       var left = reduce ? 0 : SPIN_MS - (Date.now() - started);
       return new Promise(function (r) { window.setTimeout(r, Math.max(0, left)); });
     }
-    api("POST", "/game/" + v.date + "/draw", { n: n, preferredTeamsEnabled: preferredTeamsEnabled(v) }).then(function (res) {
+    api("POST", "/game/" + v.date + "/draw", { n: n, preferredTeamsEnabled: preferredTeamsEnabled(v), separatePairs: separatePairs(v).filter(function(pair) { return pair.every(function(id) { return (v.joined || []).some(function(p) { return p.id === id; }); }); }) }).then(function (res) {
       settle().then(function () {
         state.busy = false;
         state.spinning = false;
@@ -1156,6 +1164,14 @@
     if (!b || b.disabled || state.busy || state.spinning) return;
     var act = b.getAttribute("data-act");
     if (act === "add" || act === "remove") scheduleChange(act);
+    else if (act === "separate-add") {
+      var first = dayEl.querySelector('[data-separate-first]').value, second = dayEl.querySelector('[data-separate-second]').value;
+      var pairs = separatePairs(state.day).slice();
+      if (!first || !second || first === second) { dayEl.querySelector('.separate-error').textContent = '请选择两个不同的人'; return; }
+      if (!pairs.some(function(pair) { return pair.indexOf(first) >= 0 && pair.indexOf(second) >= 0; })) pairs.push([first, second]);
+      separateChoices[state.day.date] = pairs; renderDay();
+    }
+    else if (act === "separate-remove") { separateChoices[state.day.date] = separatePairs(state.day).filter(function(_, i) { return i !== +b.getAttribute('data-pair'); }); renderDay(); }
     else if (act === "preferred-team-toggle") { preferredTeamChoices[state.day.date] = !preferredTeamsEnabled(state.day); renderDay(); }
     else if (act === "draw") throwDisc(b);
     else if (act === "publish") publishTeams();

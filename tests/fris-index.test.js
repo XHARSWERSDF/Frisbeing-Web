@@ -130,3 +130,16 @@ test('ungrouped T1s are shared across five-person teams', () => {
   assert.deepEqual(result.teams.map(team => team.filter(p => p.tier === 'A').length), [1, 1]);
   assert.ok(result.balance.tierGaps.every(gap => gap <= 1));
 });
+
+test('separate-team constraints survive equal-tier search symmetry and reject conflicting teammate groups', () => {
+  const players = Array.from({length:6},(_,i)=>({id:'s'+i,name:'S'+i,tier:'I',position:'c',separateFrom:[]}));
+  [['s0','s1'],['s0','s2'],['s3','s4']].forEach(pair=>pair.forEach(id=>players.find(p=>p.id===id).separateFrom.push(pair.find(other=>other!==id))));
+  for(let i=0;i<8;i++) {
+    const draw=FB.sort(players,'fair',2);
+    assert.ok(!draw.error,draw.error);
+    assert.ok(draw.teams.every(FB.canShareTeam));
+    assert.equal(FB.drawError(draw.teams),null);
+  }
+  players[0].teammateGroupId=players[1].teammateGroupId='conflict';
+  assert.equal(FB.sort(players,'fair',2).code,'DRAW_CONSTRAINTS');
+});

@@ -22,7 +22,11 @@ async function serverFixture(t, seed) {
   await new Promise((resolve, reject) => { listener.once('error', reject); listener.listen(0, '127.0.0.1', resolve); });
   const port = listener.address().port;
   await new Promise(resolve => listener.close(resolve));
-  const child = spawn(process.execPath, [path.resolve('server/server.js')], {
+  const clockFile = path.join(dir, 'clock.cjs');
+  const clubToday = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  const clockTime = Date.parse(clubToday + 'T12:00:00+08:00');
+  fs.writeFileSync(clockFile, `const RealDate=Date;global.Date=class extends RealDate {constructor(...args){super(...(args.length?args:[${clockTime}]));}static now(){return ${clockTime};}};`);
+  const child = spawn(process.execPath, ['--require', clockFile, path.resolve('server/server.js')], {
     env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', DATA_FILE: file }, stdio: ['ignore', 'pipe', 'pipe']
   });
   t.after(async () => { if (child.exitCode === null) await new Promise(r => { child.once('exit', r); child.kill(); }); fs.rmSync(dir, { recursive: true, force: true }); });
@@ -422,7 +426,7 @@ test('Fris Star previews can gain, lose and regain an award with tied frequency 
 });
 
 test('grade and full name auto-join matching accounts and keep temporary guest limits and suspension enforcement', async t => {
-  const tomorrow=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(Date.now()+86400000));
+  const tomorrow=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   const f=await serverFixture(t,data=>{
     data.schedule={weekdays:[],since:tomorrow,added:[tomorrow],removed:[]};
     data.users[1].grade='G11';data.users[1].fullName='Test B';
@@ -460,7 +464,7 @@ test('preview no-account form matches full name and grade to an existing account
 
 
 test('account sponsors can list and remove their own signups without controlling independently rejoined accounts', async t => {
-  const date = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(Date.now()+86400000));
+  const date = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   const f = await serverFixture(t, data => { data.schedule = {weekdays:[],since:date,added:[date],removed:[]}; });
   const route = `/game/${date}`;
   await f.api(0,'PUT',route+'/rsvp',{status:'in'});
@@ -479,4 +483,26 @@ test('account sponsors can list and remove their own signups without controlling
   await f.api(3,'PUT',route+'/rsvp',{status:'in'});
   await f.api(0,'DELETE',route+'/friends',{id:f.users[3].id},403);
   assert.equal((await f.api(0,'GET',`/game?date=${date}`)).accountFriendSignups.length,0);
+});
+
+test('admins draw with separate pairs, persist them, reject invalid pairs and prevent conflicting manual moves', async t => {
+  const date=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  const f=await serverFixture(t,data=>{
+    data.users[0].email='justin.he_27@tsinglan.org';
+    data.schedule={weekdays:[],added:[date],removed:[],since:date};
+    data.games={[date]:{rsvps:Object.fromEntries(data.users.map(p=>[p.id,'in'])),draw:null}};
+  });
+  const route=`/game/${date}/draw`, pair=[f.users[1].id,f.users[2].id];
+  await f.api(1,'POST',route,{n:2,separatePairs:[pair]},403);
+  await f.api(0,'POST',route,{n:2,separatePairs:[[pair[0],pair[0]]]},400);
+  const result=await f.api(0,'POST',route,{n:2,separatePairs:[pair]});
+  assert.deepEqual(result.separatePairs,[pair]);
+  const first=result.teams.findIndex(team=>team.some(p=>p.id===pair[0]));
+  const second=result.teams.findIndex(team=>team.some(p=>p.id===pair[1]));
+  assert.notEqual(first,second);
+  assert.deepEqual(f.saved().games[date].draw.separatePairs,[pair]);
+  await f.api(0,'PUT',`/game/${date}/assignment`,{id:pair[0],team:second},409);
+  const after=await f.api(0,'GET',`/game?date=${date}`);
+  assert.deepEqual(after.separatePairs,[pair]);
+  assert.equal(after.teams[first].some(p=>p.id===pair[0]),true);
 });

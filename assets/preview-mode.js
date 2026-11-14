@@ -124,7 +124,7 @@
       var group = getData().teammateGroups.find(function (entry) {
         return entry.members.some(function (member) { return previewNorm(member.name) === previewNorm(player.member || player.name); });
       });
-      return Object.assign({}, player, { teammateGroupId: preferredTeamsEnabled && group ? group.id : null });
+      return Object.assign({}, player, { teammateGroupId: preferredTeamsEnabled && group ? group.id : null, separateFrom: (g.draw && g.draw.separatePairs || []).filter(function(pair) { return pair.indexOf(player.id) >= 0; }).map(function(pair) { return pair.find(function(id) { return id !== player.id; }); }) });
     });
   }
   function view(date) {
@@ -147,6 +147,7 @@
     v.accountFriendSignups = g.joined.filter(function(p) { return !p.temporaryPlayer && p.ownerEmail === (user() || {}).email; }).map(function(p) { return { id: p.id, name: p.name }; });
     v.friendSignups = g.joined.filter(function(p) { return p.temporaryPlayer && p.ownerEmail === (user() || {}).email; }).map(function(p) { return { id: p.id, name: p.name }; });
     if (manages) {
+      v.separatePairs = g.draw && g.draw.separatePairs || [];
       v.preferredTeamsEnabled = !g.draw || g.draw.preferredTeamsEnabled !== false;
       v.joined = drawingPlayers(g); v.passed = g.passed;
       if (g.draw) {
@@ -512,6 +513,7 @@
           if (!signedIn()) throw new Error("Sign in first.");
           if (isSuspended(user())) throw new Error("Game sign-ups are unavailable for your account.");
           var friendView = view(date), me = user();
+          if (date !== dateAt(0)) throw new Error("Signing up friends opens on the session day.");
           if (!friendView.canJoin) throw new Error("Sign-ups are closed for this session.");
           if (friendView.me.rsvp !== "in") throw new Error("Join this session before signing up a friend.");
           if (method === "GET") return { friends: d.accounts.filter(function(a) { return a.email !== me.email && !isSuspended(a) && !g.joined.some(function(p) { return previewNorm(p.member || p.name) === previewNorm(a.member || a.name); }); }).map(function(a) { return { id: a.id, name: a.name }; }) };
@@ -569,7 +571,10 @@
           }
         } else if (action === "draw") {
           if (method === "DELETE") g.draw = null;
-          else { var sorted = FB.sort(drawingPlayers(g, body.preferredTeamsEnabled !== false), "fair", body.n); if (sorted.error) throw new Error(sorted.error); g.draw = { at: Date.now(), preferredTeamsEnabled: body.preferredTeamsEnabled !== false, published: false, teams: sorted.teams }; }
+          else { var players = drawingPlayers(g, body.preferredTeamsEnabled !== false), pairs = body.separatePairs || [];
+            if (!Array.isArray(pairs) || pairs.length > 100 || pairs.some(function(pair) { return !Array.isArray(pair) || pair.length !== 2 || pair[0] === pair[1] || pair.some(function(id) { return !players.some(function(p) { return p.id === id; }); }); })) throw new Error("Choose two different players who joined this session.");
+            players.forEach(function(p) { p.separateFrom = pairs.filter(function(pair) { return pair.indexOf(p.id) >= 0; }).map(function(pair) { return pair.find(function(id) { return id !== p.id; }); }); });
+            var sorted = FB.sort(players, "fair", body.n); if (sorted.error) throw new Error(sorted.error); g.draw = { at: Date.now(), preferredTeamsEnabled: body.preferredTeamsEnabled !== false, separatePairs: pairs, published: false, teams: sorted.teams }; }
         } else if (action === "publish" && method === "POST") {
           if (!g.draw) throw new Error("Draw teams before publishing.");
           if (g.draw.published !== false) throw new Error("These teams are already published.");
@@ -586,6 +591,7 @@
             }); });
             var moved = FB.moveTeamMember(candidate, body.id, body.team);
             if (moved.error) throw new Error(moved.error);
+            if (moved.teams.some(function(team) { return (g.draw.separatePairs || []).some(function(pair) { return pair.every(function(id) { return team.some(function(p) { return p.id === id; }); }); }); })) throw new Error("These players must stay on separate teams.");
             g.draw.teams = moved.teams;
             if (date >= dateAt(0)) { g.draw.published = false; delete g.draw.publishedAt; }
           }

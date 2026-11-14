@@ -1992,3 +1992,15 @@ button.passion-star-title:focus-visible { outline: 2px solid currentColor; outli
 .friend-signup .account-friend-signups li { margin: 0; line-height: 1.5; }
 .account-friend-signups li + li { margin-top: 6px; }
 .account-friend-signups .tn-link { margin: 0 0 0 6px; padding: 2px 4px; }
+
+.upcoming-session > .tn-actions { margin-left: auto; margin-right: auto; }
+
+.separate-teams { width: min(100%, 440px); margin: 16px auto 24px; text-align: center; }
+.separate-teams h4 { margin: 0 0 10px; font: 500 14px/1.4 var(--f-body); color: var(--chalk); }
+.separate-controls { display: flex; gap: 8px; }
+.separate-controls select { min-width: 0; flex: 1; padding: 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--ink); color: var(--chalk); font: 13px var(--f-body); }
+.separate-teams button { padding: 6px 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--green); color: var(--chalk); font: 13px var(--f-body); cursor: pointer; }
+.separate-teams ul { margin: 10px 0 0; padding: 0; list-style: none; }
+.separate-teams li { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; font-size: 13px; }
+.separate-error:empty, .separate-teams ul:empty { display: none; }
+.separate-error { margin: 8px 0 0; font-size: 13px; color: var(--warn); }

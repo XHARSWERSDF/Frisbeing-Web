@@ -660,6 +660,8 @@ function joinedPlayers(game, preferredTeamsEnabled = !game.draw || game.draw.pre
     });
   }
   for (const guest of game.guests || []) out.push({ id: guest.id, name: guest.name, member: null, tier: "B", gender: "", position: "c", teammateGroupId: null });
+  const pairs = game.draw && game.draw.separatePairs || [];
+  out.forEach(p => { p.separateFrom = pairs.filter(pair => pair.includes(p.id)).map(pair => pair.find(id => id !== p.id)); });
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -716,6 +718,7 @@ function gameView(date, who, today = clubDate()) {
     };
   }
   if (managesClub) {
+    view.separatePairs = draw && draw.separatePairs || [];
     view.preferredTeamsEnabled = !draw || draw.preferredTeamsEnabled !== false;
     view.joined = game ? joinedPlayers(game) : [];
     view.passed = game
@@ -1558,6 +1561,7 @@ const server = http.createServer(async (req, res) => {
       if (!who) return send(res, 401, { error: "Sign in first." });
       if (gameSuspended(who.user)) return send(res, 403, { error: "Game sign-ups are unavailable for your account." });
       const date = friends[1];
+      if (date !== clubDate()) return send(res, 400, { error: "Signing up friends opens on the session day." });
       const view = gameView(date, who);
       if (!isDateString(date) || !view.canJoin) return send(res, 400, { error: "Sign-ups are closed for this session." });
       const game = gameFor(date);
@@ -1681,6 +1685,10 @@ const server = http.createServer(async (req, res) => {
       if (players.length < n) {
         return send(res, 400, { error: players.length + " joined so far - not enough for " + n + " teams." });
       }
+      const separatePairs = body.separatePairs === undefined ? (game.draw && game.draw.separatePairs || []) : body.separatePairs;
+      const joinedIds = new Set(players.map(p => p.id));
+      if (!Array.isArray(separatePairs) || separatePairs.length > 100 || separatePairs.some(pair => !Array.isArray(pair) || pair.length !== 2 || pair[0] === pair[1] || pair.some(id => !joinedIds.has(id)))) return send(res, 400, { error: "Choose two different players who joined this session." });
+      players.forEach(p => { p.separateFrom = separatePairs.filter(pair => pair.includes(p.id)).map(pair => pair.find(id => id !== p.id)); });
       /* Keep attending teammate groups together. The shared engine enforces
          size and Fris Index limits, then balances gender. */
       const result = FB.sort(players, "fair", n);
@@ -1689,9 +1697,10 @@ const server = http.createServer(async (req, res) => {
         at: Date.now(),
         by: who.user.email,
         preferredTeamsEnabled,
+        separatePairs,
         published: false,
         teams: result.teams.map((t) => t.map((p) => ({
-          id: p.id, name: p.name, member: p.member, tier: p.tier, gender: p.gender, position: FB.position(p), teammateGroupId: p.teammateGroupId || null
+          id: p.id, name: p.name, member: p.member, tier: p.tier, gender: p.gender, position: FB.position(p), teammateGroupId: p.teammateGroupId || null, separateFrom: p.separateFrom || []
         })))
       };
       db.gamesVersion++;
@@ -1754,6 +1763,7 @@ const server = http.createServer(async (req, res) => {
         const moved = FB.moveTeamMember(candidate, player.id, target);
         if (moved.error) return send(res, 409, { error: moved.error });
         if (body.position !== undefined) moved.teams[target].find((p) => p.id === player.id).position = body.position;
+        if (moved.teams.some(team => (game.draw.separatePairs || []).some(pair => pair.every(id => team.some(p => p.id === id))))) return send(res, 409, { error: "These players must stay on separate teams." });
         game.draw.teams = moved.teams;
         if (!historical) {
           game.draw.published = false;
